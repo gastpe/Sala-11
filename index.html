@@ -929,7 +929,7 @@ function confirmEgreso(){
     coinfecciones: [c.vhb?'VHB':'', c.vhc?'VHC':'', c.otraCoinfeccion||''].filter(Boolean).join(', '),
     tarv: c.tarv || '', tarvDesde: c.tarvDesde || '', tipoEsquemaTARV: c.tipoEsquemaTARV || '',
     tarvDrogas: [...(c.tarvDrogas||[]), c.tarvDrogasOtra||''].filter(Boolean).join(', '),
-    tuvoTB: c.tuvoTB || 'No',
+    tuvoTB: c.tuvoTB || '',
     situacionTB: c.situacionTB || '',
     formaClinicaTB: (c.formaClinicaTB||[]).join(', ') + (c.formaClinicaTBOtra ? (c.formaClinicaTB&&c.formaClinicaTB.length?', ':'')+c.formaClinicaTBOtra : ''),
     motivoPrincipalTB: c.motivoPrincipalTB || '',
@@ -937,18 +937,18 @@ function confirmEgreso(){
     tratamientoTB: c.tratamientoTB || '',
     esquemaTB: c.esquemaTB || '',
     causaEsquemaTB: c.esquemaTB==='Alternativo' ? (c.causaEsquemaTB==='Otro' ? (c.causaEsquemaTBOtra||'Otro') : (c.causaEsquemaTB||'')) : '',
-    internacionPreviaOtroLugar: c.internacionPreviaOtroLugar || 'No',
+    internacionPreviaOtroLugar: c.internacionPreviaOtroLugar || '',
     tiempoInternacionPreviaOtroLugar: c.internacionPreviaOtroLugar==='Sí' ? (c.tiempoInternacionPreviaOtroLugar||'') : '',
-    antecedenteSifilis: c.antecedenteSifilis || 'No',
-    vdrl: c.vdrl || 'Negativa',
+    antecedenteSifilis: c.antecedenteSifilis || '',
+    vdrl: c.vdrl || '',
     vdrlDilucion: c.vdrl==='Positiva' ? (c.vdrlDilucion||'') : '',
     comorbilidades: [...(c.comorbilidades||[]), c.comorbilidadesOtras||''].filter(Boolean).join(', '),
     infeccionesIH: (c.infeccionesIH||[]).join(', '),
-    rescateMicro: c.rescateMicro || 'No',
+    rescateMicro: c.rescateMicro || '',
     germen: c.rescateMicro==='Sí' ? (c.germen||'') : '',
     sensibilidad: c.rescateMicro==='Sí' ? (c.sensibilidad||'') : '',
     mecanismoResistencia: (c.mecanismoResistencia||[]).join(', '),
-    trastornoAdiccion: c.trastornoAdiccion || 'No',
+    trastornoAdiccion: c.trastornoAdiccion || '',
     motivoInternacion: (c.motivoInternacion==='Otro' ? (c.motivoInternacionOtro || 'Otro') : c.motivoInternacion) || '',
     evolucion: c.evolucion || '',
     egreso: fecha,
@@ -1082,24 +1082,28 @@ function renderClinicoFormHTML(c){
     <div class="field"><label>Edad</label><input type="number" id="cEdad" value="${c.edad||''}" min="0" max="120"></div>
     <div class="field"><label>Situación de calle</label>
       <select id="cSituacionVivienda">
+        <option value="" ${!c.situacionVivienda?'selected':''}>-- Elegir --</option>
         <option value="No" ${c.situacionVivienda==='No'?'selected':''}>No</option>
         <option value="Sí" ${c.situacionVivienda==='Sí'?'selected':''}>Sí</option>
       </select>
     </div>
     <div class="field"><label>¿Tuvo alguna internación previa relacionada al VIH (en cualquier sala u hospital, no solo acá) antes de esta?</label>
       <select id="cInternacionPreviaOtroLugar" onchange="toggleInternacionPreviaOtroLugar()">
-        <option value="No" ${c.internacionPreviaOtroLugar==='No'||!c.internacionPreviaOtroLugar?'selected':''}>No</option>
+        <option value="" ${!c.internacionPreviaOtroLugar?'selected':''}>-- Elegir --</option>
+        <option value="No" ${c.internacionPreviaOtroLugar==='No'?'selected':''}>No</option>
         <option value="Sí" ${c.internacionPreviaOtroLugar==='Sí'?'selected':''}>Sí</option>
       </select>
     </div>
     <div class="field" id="tiempoInternacionPreviaWrap" style="${c.internacionPreviaOtroLugar==='Sí'?'':'display:none;'}">
       <label>¿Hace cuánto fue la más reciente?</label>
       <select id="cTiempoInternacionPrevia">
+        <option value="" ${!c.tiempoInternacionPreviaOtroLugar?'selected':''}>-- Elegir --</option>
         ${TIEMPO_INTERNACION_PREVIA_OPCIONES.map(op=>`<option value="${op}" ${c.tiempoInternacionPreviaOtroLugar===op?'selected':''}>${op}</option>`).join('')}
       </select>
     </div>
     <div class="field"><label>Trastorno de adicción a drogas psicoactivas</label>
       <select id="cTrastornoAdiccion">
+        <option value="" ${!c.trastornoAdiccion?'selected':''}>-- Elegir --</option>
         <option value="No" ${c.trastornoAdiccion==='No'?'selected':''}>No</option>
         <option value="Sí" ${c.trastornoAdiccion==='Sí'?'selected':''}>Sí</option>
       </select>
@@ -1112,6 +1116,7 @@ function renderClinicoFormHTML(c){
       <div class="ind-details-body">
     <div class="field"><label>Motivo de internación (sindrómico)</label>
       <select id="cMotivoInternacion" onchange="toggleMotivoOtro()">
+        <option value="" ${!c.motivoInternacion?'selected':''}>-- Elegir --</option>
         ${MOTIVO_INTERNACION_OPCIONES.map(op=>`<option value="${op}" ${c.motivoInternacion===op?'selected':''}>${op}</option>`).join('')}
       </select>
     </div>
@@ -1124,6 +1129,7 @@ function renderClinicoFormHTML(c){
       <div class="ind-details-body">
     <div class="field"><label>Diagnóstico de VIH</label>
       <select id="cDiagnosticoVIH">
+        <option value="" ${!c.diagnosticoVIH?'selected':''}>-- Elegir --</option>
         <option value="Vertical" ${c.diagnosticoVIH==='Vertical'?'selected':''}>Vertical</option>
         <option value="Crónico" ${c.diagnosticoVIH==='Crónico'?'selected':''}>Crónico</option>
         <option value="Reciente (menos de 6 meses)" ${c.diagnosticoVIH==='Reciente (menos de 6 meses)'?'selected':''}>Reciente (&lt;6 meses)</option>
@@ -1131,6 +1137,7 @@ function renderClinicoFormHTML(c){
     </div>
     <div class="field"><label>Tiempo aproximado desde el diagnóstico de VIH</label>
       <select id="cTiempoDxVIH">
+        <option value="" ${!c.tiempoDxVIH?'selected':''}>-- Elegir --</option>
         ${TIEMPO_DX_OPCIONES.map(op=>`<option value="${op}" ${c.tiempoDxVIH===op?'selected':''}>${op}</option>`).join('')}
       </select>
     </div>
@@ -1138,6 +1145,7 @@ function renderClinicoFormHTML(c){
     <div class="field"><label>Carga viral (CV) al inicio de la internación</label><input id="cCV" value="${c.cv||''}" placeholder="Ej: indetectable, 15000"></div>
     <div class="field"><label>TARV</label>
       <select id="cTARV" onchange="toggleTarvDesde()">
+        <option value="" ${!c.tarv?'selected':''}>-- Elegir --</option>
         <option value="Naive" ${c.tarv==='Naive'?'selected':''}>Naive</option>
         <option value="En tratamiento" ${c.tarv==='En tratamiento'?'selected':''}>En tratamiento</option>
         <option value="Abandono" ${c.tarv==='Abandono'?'selected':''}>Abandono</option>
@@ -1147,6 +1155,7 @@ function renderClinicoFormHTML(c){
     <div class="field" id="cTipoEsquemaTARVWrap" style="${c.tarv==='En tratamiento' ? '' : 'display:none;'}">
       <label>Tipo de esquema</label>
       <select id="cTipoEsquemaTARV">
+        <option value="" ${!c.tipoEsquemaTARV?'selected':''}>-- Elegir --</option>
         ${TIPO_ESQUEMA_TARV_OPCIONES.map(op=>`<option value="${op}" ${c.tipoEsquemaTARV===op?'selected':''}>${op}</option>`).join('')}
       </select>
     </div>
@@ -1172,13 +1181,15 @@ function renderClinicoFormHTML(c){
     </div>
     <div class="field"><label>Antecedente conocido de sífilis</label>
       <select id="cAntecedenteSifilis">
-        <option value="No" ${c.antecedenteSifilis==='No'||!c.antecedenteSifilis?'selected':''}>No</option>
+        <option value="" ${!c.antecedenteSifilis?'selected':''}>-- Elegir --</option>
+        <option value="No" ${c.antecedenteSifilis==='No'?'selected':''}>No</option>
         <option value="Sí" ${c.antecedenteSifilis==='Sí'?'selected':''}>Sí</option>
       </select>
     </div>
     <div class="field"><label>VDRL de ingreso</label>
       <select id="cVDRL" onchange="toggleVDRLDilucion()">
-        <option value="Negativa" ${c.vdrl==='Negativa'||!c.vdrl?'selected':''}>Negativa</option>
+        <option value="" ${!c.vdrl?'selected':''}>-- Elegir --</option>
+        <option value="Negativa" ${c.vdrl==='Negativa'?'selected':''}>Negativa</option>
         <option value="Positiva" ${c.vdrl==='Positiva'?'selected':''}>Positiva</option>
       </select>
     </div>
@@ -1194,13 +1205,15 @@ function renderClinicoFormHTML(c){
       <div class="ind-details-body">
     <div class="field"><label>¿Tiene tuberculosis relacionada con esta internación (activa, en tratamiento o antecedente relevante)?</label>
       <select id="cTuvoTB" onchange="toggleTBDetalle()">
-        <option value="No" ${c.tuvoTB==='No'||!c.tuvoTB?'selected':''}>No</option>
+        <option value="" ${!c.tuvoTB?'selected':''}>-- Elegir --</option>
+        <option value="No" ${c.tuvoTB==='No'?'selected':''}>No</option>
         <option value="Sí" ${c.tuvoTB==='Sí'?'selected':''}>Sí</option>
       </select>
     </div>
     <div id="tbDetalleWrap" style="${c.tuvoTB==='Sí'?'':'display:none;'}">
       <div class="field"><label>Situación clínica con la TB</label>
         <select id="cSituacionTB">
+          <option value="" ${!c.situacionTB?'selected':''}>-- Elegir --</option>
           ${TB_SITUACION_OPCIONES.map(op=>`<option value="${op}" ${c.situacionTB===op?'selected':''}>${op}</option>`).join('')}
         </select>
       </div>
@@ -1212,20 +1225,23 @@ function renderClinicoFormHTML(c){
       </div>
       <div class="field"><label>¿Es el motivo principal de esta internación?</label>
         <select id="cMotivoPrincipalTB">
-          <option value="No" ${c.motivoPrincipalTB==='No'||!c.motivoPrincipalTB?'selected':''}>No</option>
+          <option value="" ${!c.motivoPrincipalTB?'selected':''}>-- Elegir --</option>
+          <option value="No" ${c.motivoPrincipalTB==='No'?'selected':''}>No</option>
           <option value="Sí" ${c.motivoPrincipalTB==='Sí'?'selected':''}>Sí</option>
         </select>
       </div>
       <div class="field"><label>Confirmación diagnóstica</label>
         <select id="cConfirmacionTB">
-          <option value="Confirmada" ${c.confirmacionTB==='Confirmada'||!c.confirmacionTB?'selected':''}>Confirmada (bacteriología/histología)</option>
+          <option value="" ${!c.confirmacionTB?'selected':''}>-- Elegir --</option>
+          <option value="Confirmada" ${c.confirmacionTB==='Confirmada'?'selected':''}>Confirmada (bacteriología/histología)</option>
           <option value="Pendiente" ${c.confirmacionTB==='Pendiente'?'selected':''}>Pendiente (muestras tomadas, resultado en estudio)</option>
           <option value="Empírico" ${c.confirmacionTB==='Empírico'?'selected':''}>Empírico (tratamiento sin muestras en estudio)</option>
         </select>
       </div>
       <div class="field"><label>Tratamiento actual</label>
         <select id="cTratamientoTB">
-          <option value="No recibe" ${c.tratamientoTB==='No recibe'||!c.tratamientoTB?'selected':''}>No recibe tratamiento</option>
+          <option value="" ${!c.tratamientoTB?'selected':''}>-- Elegir --</option>
+          <option value="No recibe" ${c.tratamientoTB==='No recibe'?'selected':''}>No recibe tratamiento</option>
           <option value="Inició en esta internación" ${c.tratamientoTB==='Inició en esta internación'?'selected':''}>Inició tratamiento en esta internación</option>
           <option value="Continúa ya iniciado" ${c.tratamientoTB==='Continúa ya iniciado'?'selected':''}>Continúa tratamiento ya iniciado</option>
           <option value="Abandonó durante la internación" ${c.tratamientoTB==='Abandonó durante la internación'?'selected':''}>Abandonó el tratamiento durante esta internación</option>
@@ -1233,13 +1249,15 @@ function renderClinicoFormHTML(c){
       </div>
       <div class="field"><label>Esquema de tratamiento</label>
         <select id="cEsquemaTB" onchange="toggleCausaEsquemaTB()">
-          <option value="Clásico (HRZE)" ${c.esquemaTB==='Clásico (HRZE)'||!c.esquemaTB?'selected':''}>Clásico (HRZE)</option>
+          <option value="" ${!c.esquemaTB?'selected':''}>-- Elegir --</option>
+          <option value="Clásico (HRZE)" ${c.esquemaTB==='Clásico (HRZE)'?'selected':''}>Clásico (HRZE)</option>
           <option value="Alternativo" ${c.esquemaTB==='Alternativo'?'selected':''}>Esquema alternativo</option>
         </select>
       </div>
       <div class="field" id="causaEsquemaTBWrap" style="${c.esquemaTB==='Alternativo'?'':'display:none;'}">
         <label>Causa del esquema alternativo</label>
         <select id="cCausaEsquemaTB">
+          <option value="" ${!c.causaEsquemaTB?'selected':''}>-- Elegir --</option>
           ${TB_CAUSA_ESQUEMA_OPCIONES.map(op=>`<option value="${op}" ${c.causaEsquemaTB===op?'selected':''}>${op}</option>`).join('')}
         </select>
         <input id="cCausaEsquemaTBOtra" value="${c.causaEsquemaTBOtra||''}" placeholder="Si elegiste Otro, especificar" style="margin-top:6px;">
@@ -1265,7 +1283,8 @@ function renderClinicoFormHTML(c){
       <div class="ind-details-body">
     <div class="field"><label>¿Presentó alguna infección intrahospitalaria durante su internación?</label>
       <select id="cTuvoIIH" onchange="toggleIIHDetalle()">
-        <option value="No" ${c.tuvoIIH==='No'||!c.tuvoIIH?'selected':''}>No</option>
+        <option value="" ${!c.tuvoIIH?'selected':''}>-- Elegir --</option>
+        <option value="No" ${c.tuvoIIH==='No'?'selected':''}>No</option>
         <option value="Sí" ${c.tuvoIIH==='Sí'?'selected':''}>Sí</option>
       </select>
     </div>
@@ -1277,13 +1296,15 @@ function renderClinicoFormHTML(c){
       </div>
       <div class="field"><label>¿Hubo rescate microbiológico?</label>
         <select id="cRescateMicro" onchange="toggleRescateDetalle()">
-          <option value="No" ${c.rescateMicro==='No'||!c.rescateMicro?'selected':''}>No</option>
+          <option value="" ${!c.rescateMicro?'selected':''}>-- Elegir --</option>
+          <option value="No" ${c.rescateMicro==='No'?'selected':''}>No</option>
           <option value="Sí" ${c.rescateMicro==='Sí'?'selected':''}>Sí</option>
         </select>
       </div>
       <div id="rescateDetalleWrap" style="${c.rescateMicro==='Sí'?'':'display:none;'}">
         <div class="field"><label>Germen aislado</label>
           <select id="cGermen">
+            <option value="" ${!c.germen?'selected':''}>-- Elegir --</option>
             ${GERMEN_OPCIONES.map(op=>`<option value="${op}" ${c.germen===op?'selected':''}>${op}</option>`).join('')}
           </select>
         </div>
@@ -1404,7 +1425,7 @@ function toggleVDRLDilucion(){
 }
 function toggleTarvDesde(){
   const tarv = document.getElementById('cTARV').value;
-  const showDesde = tarv !== 'Naive';
+  const showDesde = tarv && tarv !== 'Naive';
   const showEsquema = tarv === 'En tratamiento';
   document.getElementById('cTarvDesdeWrap').style.display = showDesde ? '' : 'none';
   document.getElementById('cTipoEsquemaTARVWrap').style.display = showEsquema ? '' : 'none';
