@@ -1076,7 +1076,9 @@ function startClinico(){
 }
 function renderClinicoFormHTML(c){
   return `
-    <div class="clinico-section-title">1. Contexto general</div>
+    <details class="ind-details">
+      <summary>1. Contexto general</summary>
+      <div class="ind-details-body">
     <div class="field"><label>Edad</label><input type="number" id="cEdad" value="${c.edad||''}" min="0" max="120"></div>
     <div class="field"><label>Situación de calle</label>
       <select id="cSituacionVivienda">
@@ -1103,7 +1105,11 @@ function renderClinicoFormHTML(c){
       </select>
     </div>
 
-    <div class="clinico-section-title">2. Motivo de esta internación</div>
+      </div>
+    </details>
+    <details class="ind-details">
+      <summary>2. Motivo de esta internación</summary>
+      <div class="ind-details-body">
     <div class="field"><label>Motivo de internación (sindrómico)</label>
       <select id="cMotivoInternacion" onchange="toggleMotivoOtro()">
         ${MOTIVO_INTERNACION_OPCIONES.map(op=>`<option value="${op}" ${c.motivoInternacion===op?'selected':''}>${op}</option>`).join('')}
@@ -1111,7 +1117,11 @@ function renderClinicoFormHTML(c){
     </div>
     <div class="field" id="cMotivoOtroWrap" style="${c.motivoInternacion==='Otro'?'':'display:none;'}"><label>Especificar</label><input id="cMotivoOtro" value="${c.motivoInternacionOtro||''}"></div>
 
-    <div class="clinico-section-title">3. Antecedentes de VIH</div>
+      </div>
+    </details>
+    <details class="ind-details">
+      <summary>3. Antecedentes de VIH</summary>
+      <div class="ind-details-body">
     <div class="field"><label>Diagnóstico de VIH</label>
       <select id="cDiagnosticoVIH">
         <option value="Vertical" ${c.diagnosticoVIH==='Vertical'?'selected':''}>Vertical</option>
@@ -1148,7 +1158,11 @@ function renderClinicoFormHTML(c){
       <input id="cTarvDrogasOtra" value="${c.tarvDrogasOtra||''}" placeholder="Otra (especificar)">
     </div>
 
-    <div class="clinico-section-title">4. Coinfecciones y serologías</div>
+      </div>
+    </details>
+    <details class="ind-details">
+      <summary>4. Coinfecciones y serologías</summary>
+      <div class="ind-details-body">
     <div class="field"><label>Coinfecciones</label>
       <div style="display:flex; gap:14px; margin-bottom:6px; font-size:15.3px;">
         <label style="display:flex; align-items:center; gap:5px; font-weight:600; color:var(--ink);"><input type="checkbox" id="cVHB" ${c.vhb?'checked':''} style="width:auto;">VHB</label>
@@ -1173,7 +1187,11 @@ function renderClinicoFormHTML(c){
       <input id="cVDRLDilucion" value="${c.vdrlDilucion||''}" placeholder="1:16">
     </div>
 
-    <div class="clinico-section-title">5. Tuberculosis</div>
+      </div>
+    </details>
+    <details class="ind-details">
+      <summary>5. Tuberculosis</summary>
+      <div class="ind-details-body">
     <div class="field"><label>¿Tiene tuberculosis relacionada con esta internación (activa, en tratamiento o antecedente relevante)?</label>
       <select id="cTuvoTB" onchange="toggleTBDetalle()">
         <option value="No" ${c.tuvoTB==='No'||!c.tuvoTB?'selected':''}>No</option>
@@ -1228,7 +1246,11 @@ function renderClinicoFormHTML(c){
       </div>
     </div>
 
-    <div class="clinico-section-title">6. Comorbilidades</div>
+      </div>
+    </details>
+    <details class="ind-details">
+      <summary>6. Comorbilidades</summary>
+      <div class="ind-details-body">
     <div class="field">
       <div style="display:flex; flex-wrap:wrap; gap:6px; margin-bottom:6px;">
         ${COMORB_OPCIONES.map(op=>`<label style="display:flex; align-items:center; gap:4px; font-size:14.2px; font-weight:600; color:var(--ink); border:1px solid var(--line); border-radius:6px; padding:5px 8px;"><input type="checkbox" class="comorbCheck" value="${op}" ${(c.comorbilidades||[]).includes(op)?'checked':''} style="width:auto;">${op}</label>`).join('')}
@@ -1236,7 +1258,11 @@ function renderClinicoFormHTML(c){
       <input id="cComorbilidadesOtras" value="${c.comorbilidadesOtras||''}" placeholder="Otras (especificar)">
     </div>
 
-    <div class="clinico-section-title">7. Infecciones intrahospitalarias</div>
+      </div>
+    </details>
+    <details class="ind-details">
+      <summary>7. Infecciones intrahospitalarias</summary>
+      <div class="ind-details-body">
     <div class="field"><label>¿Presentó alguna infección intrahospitalaria durante su internación?</label>
       <select id="cTuvoIIH" onchange="toggleIIHDetalle()">
         <option value="No" ${c.tuvoIIH==='No'||!c.tuvoIIH?'selected':''}>No</option>
@@ -1270,12 +1296,22 @@ function renderClinicoFormHTML(c){
       </div>
     </div>
 
-    <div class="clinico-section-title">8. Diagnósticos de esta internación</div>
+      </div>
+    </details>
+    <details class="ind-details">
+      <summary>8. Diagnósticos de esta internación</summary>
+      <div class="ind-details-body">
     <div id="diagContainer"></div>
     <button type="button" class="btn ghost" style="width:100%; margin-bottom:14px;" onclick="addDiagEntry()">+ Agregar diagnóstico</button>
 
-    <div class="clinico-section-title">9. Evolución</div>
-    <div class="field"><label>Evolución general</label><textarea id="cEvolucion" rows="3">${c.evolucion||''}</textarea></div>
+      </div>
+    </details>
+    <details class="ind-details">
+      <summary>9. Evolución</summary>
+      <div class="ind-details-body">
+    <div class="field"><label>Evolución general</label><textarea id="cEvolucion" rows="3">${c.evolucion||''}</textarea></div>      </div>
+    </details>
+
     <button type="button" class="btn" style="width:100%; margin-top:6px;" onclick="saveClinico()">Guardar datos clínicos</button>
     <button type="button" class="btn ghost" style="width:100%; margin-top:8px;" onclick="cancelClinico()">Volver</button>
   `;
