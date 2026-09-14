@@ -3351,15 +3351,11 @@ async function loadState(){
     renderAll();
   }
 
-  // Si quedaron cambios de una sesión offline anterior sin sincronizar, priorizarlos e intentar reenviarlos ahora
-  if(hasPendingSync()){
-    await saveState();
-    return;
-  }
-
   try{
     const res = await fetch(APPS_SCRIPT_URL);
     const data = await res.json();
+    // A partir de acá tenemos la foto REAL y actual del servidor — beds y notas se reemplazan
+    // por completo con esto, nunca con una copia vieja guardada en esta computadora.
     if(data.beds){
       allIds.forEach(id => { beds[id] = data.beds[id] || {status:'libre'}; });
     }
@@ -3368,12 +3364,20 @@ async function loadState(){
     if(data.notas) notas = data.notas;
     if(data.conflictivos) conflictivos = data.conflictivos;
     if(data.desenlacesUTI) desenlacesUTI = data.desenlacesUTI;
-    pendingDesenlaceUTIAppends = [];
     checkEnfermeriaUpdate(data.ultimaActualizacionEnfermeria);
-    pendingHistorialAppends = []; // lectura fresca y exitosa: no queda nada pendiente de agregar
-    pendingDiagnosticosAppends = [];
-    saveLocalCache({beds, historial, diagnosticosLog, notas, conflictivos, desenlacesUTI, pendingHistorialAppends, pendingDiagnosticosAppends, pendingDesenlaceUTIAppends});
     setOfflineBanner(false);
+
+    // Si habían quedado egresos/diagnósticos sin mandar de una sesión offline anterior, recién ahora
+    // los reenviamos — sobre la foto fresca que acabamos de leer, nunca pisándola con algo viejo.
+    if(pendingHistorialAppends.length || pendingDiagnosticosAppends.length || pendingDesenlaceUTIAppends.length){
+      await saveState();
+    } else {
+      pendingHistorialAppends = [];
+      pendingDiagnosticosAppends = [];
+      pendingDesenlaceUTIAppends = [];
+      saveLocalCache({beds, historial, diagnosticosLog, notas, conflictivos, desenlacesUTI, pendingHistorialAppends, pendingDiagnosticosAppends, pendingDesenlaceUTIAppends});
+      setPendingSync(false);
+    }
   }catch(e){
     console.error('No se pudo cargar desde Google Sheets', e);
     if(cache && cache.data){
