@@ -845,7 +845,7 @@ function saveBed(){
     const fechaIngresoHospital = fIH ? isoToEsAr(fIH) : (existing ? existing.fechaIngresoHospital : new Date().toLocaleDateString('es-AR'));
     const fechaIngresoSala = fIS ? isoToEsAr(fIS) : (existing ? existing.fechaIngresoSala : new Date().toLocaleDateString('es-AR'));
     const aislamiento = (!isIso || BATH_PAIRS[id]) ? document.getElementById('fAislamiento').value : 'ninguno';
-    beds[id] = { status:'ocupada', patient:{ nombre, dni, medico, obraSocial, aislamiento, procedencia, fechaIngresoHospital, fechaIngresoSala } };
+    beds[id] = { status:'ocupada', patient:{ nombre, dni, medico, obraSocial, aislamiento, procedencia, fechaIngresoHospital, fechaIngresoSala, clinico: existing && existing.clinico, indicaciones: existing && existing.indicaciones } };
 
     if(aislamiento!=='ninguno'){
       if(!isIso && NEIGHBORS[id]) tryLinkBlock(id, NEIGHBORS[id], aislamiento, 'contigua');
