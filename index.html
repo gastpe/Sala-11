@@ -276,13 +276,10 @@
   .seccion-toggle input{ width:auto; accent-color:var(--teal); }
   .seccion-grid{ display:grid; grid-template-columns:repeat(auto-fill, minmax(180px, 1fr)); gap:8px; }
   .seccion-grupo-titulo{ font-size:12px; font-weight:800; color:var(--teal-dark); text-transform:uppercase; letter-spacing:.03em; margin-bottom:6px; }
-  .close-x{ position:absolute; top:16px; right:18px; background:none; border:none; font-size:21.2px; cursor:pointer; color:var(--ink-soft); }
+  .close-x{ position:absolute; top:10px; right:10px; background:#EDEFF0; border:none; width:34px; height:34px; border-radius:50%; font-size:20px; font-weight:800; cursor:pointer; color:var(--ink); display:flex; align-items:center; justify-content:center; line-height:1; z-index:10; transition:background .15s; }
+  .close-x:hover{ background:#DCE0E2; }
 
   .print-area{ display:contents; }
-  #printSheet table td{ padding:8px 6px; border-bottom:1px solid var(--line); }
-  #printSheet table td:last-child{ text-align:right; font-weight:700; }
-  #printSheet table tr.subrow td{ border-bottom:none; padding:2px 6px 2px 18px; font-weight:400; color:var(--ink-soft); font-size:14.8px; }
-  #printSheet table tr.subrow td:last-child{ font-weight:600; }
   @media print{
   @page{ size: landscape; margin: 10mm; }
     @page{ size:A4; margin:8mm; }
@@ -305,6 +302,7 @@
   body.print-mode .print-area .sala-actual-box{ background:none !important; border:none !important; padding:0 !important; }
   body.print-mode .print-area [id^="chart"]{ page-break-inside:avoid; break-inside:avoid; margin-bottom:18px; }
   body.print-mode .print-area h3, body.print-mode .print-area h4{ page-break-after:avoid; break-after:avoid; }
+  body.print-mode .print-area .print-page-break{ page-break-before:always; break-before:page; }
 </style>
 </head>
 <body>
@@ -337,11 +335,6 @@
   <div class="review-banner" id="nuevosIngresosBanner" style="display:none; background:#EAF3EC; border-color:var(--libre-bd); color:var(--libre-tx);">
     <span id="nuevosIngresosBannerText"></span>
     <button class="btn ghost" style="border-color:var(--libre-bd); color:var(--libre-bd);" onclick="marcarIngresosVistos()">Listo, ya los vi</button>
-  </div>
-
-  <div class="review-banner" id="deshacerEgresoBanner" style="display:none; background:#FDF3DC; border-color:var(--aisl-bd); color:var(--aisl-tx);">
-    <span id="deshacerEgresoBannerText"></span>
-    <button class="btn ghost" style="border-color:var(--aisl-bd); color:var(--aisl-bd);" onclick="deshacerUltimoEgreso()">↩️ Deshacer</button>
   </div>
 
   <div class="review-banner" id="reviewBanner" style="display:none;">
@@ -379,6 +372,10 @@
       <div class="medico-panel" id="medicoPanel">
         <div class="medico-panel-title">👨‍⚕️ Pacientes a cargo hoy</div>
         <div id="medicoDonut"></div>
+        <div id="menuMedicoFiltrado" style="display:none; margin-top:10px; padding-top:10px; border-top:1px dashed var(--line);">
+          <button class="btn ghost" style="width:100%; margin-bottom:6px;" onclick="imprimirIndicacionesDeMisPacientes()">🖨️ Imprimir indicaciones de mis pacientes</button>
+          <button class="btn ghost" style="width:100%;" onclick="openPendientesResumen()">📝 Pendientes</button>
+        </div>
         <div id="ocupacionStats" style="margin-top:16px;"></div>
         <div class="sidebar-actions">
           <button class="btn ghost" onclick="openBuscar()">🔍 Buscar paciente</button>
@@ -425,12 +422,15 @@
 <div class="overlay" id="parteOverlay">
   <div class="modal">
     <div class="print-area" id="printSheet">
-      <h2>Parte de camas — Sala 11</h2>
-      <p class="sub-h" id="parteFecha"></p>
-      <table style="width:100%; border-collapse:collapse; font-size:16.5px;">
+      <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:3px solid var(--teal); padding-bottom:10px; margin-bottom:14px;">
+        <div style="font-size:24px; font-weight:800; letter-spacing:1px; color:var(--teal); text-transform:uppercase;">Sala 11</div>
+        <div style="font-size:19px; font-weight:700; color:#333; text-transform:uppercase; letter-spacing:.5px;">Parte de camas</div>
+        <div style="font-size:20px; font-weight:800; color:var(--teal);" id="parteFecha"></div>
+      </div>
+      <table style="width:70%; max-width:500px; margin:0 auto; border-collapse:collapse; font-size:14px;">
         <tbody id="parteTablaBody"></tbody>
       </table>
-      <p style="margin-top:70px; font-size:16.5px;">Firma y sello: ________________________</p>
+      <p style="margin-top:50px; font-size:14.5px;">Firma y sello: ________________________</p>
     </div>
     <div class="modal-actions" style="margin-top:18px;">
       <button class="btn ghost" onclick="closeParte()">Volver</button>
@@ -446,6 +446,17 @@
     <div class="modal-actions" style="margin-top:18px;">
       <button class="btn ghost" onclick="closeIndicacionesPrint()">Volver</button>
       <button class="btn" onclick="imprimirIndicacionesAhora()">Imprimir</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="pendientesResumenOverlay">
+  <div class="modal">
+    <button class="close-x" onclick="closePendientesResumen()">✕</button>
+    <div class="print-area" id="pendientesResumenBody"></div>
+    <div class="modal-actions" style="margin-top:18px;">
+      <button class="btn ghost" onclick="closePendientesResumen()">Volver</button>
+      <button class="btn" onclick="imprimirPendientesAhora()">Imprimir</button>
     </div>
   </div>
 </div>
@@ -534,7 +545,6 @@ let pendingHistorialAppends = []; // altas nuevas todavía no confirmadas en la 
 let pendingDiagnosticosAppends = []; // diagnósticos nuevos todavía no confirmados en la planilla
 let notas = []; // {id, texto, creada} — pendientes del día compartidos por el equipo
 let conflictivos = []; // {dni, nombre, motivo, fecha} — pacientes marcados por conducta conflictiva
-let lastEgresoUndo = null; // snapshot del último egreso, para poder deshacerlo si fue un error
 let clinicoRetroInfo = null; // {dni, cama, egreso, nombre} cuando se está completando datos clínicos de un egreso ya cerrado
 let desenlacesUTI = []; // {dni, cama, egreso, desenlace, fecha} — desenlace final confirmado tras un "Pase a UTI"
 let pendingDesenlaceUTIAppends = []; // desenlaces nuevos todavía no confirmados en la planilla
@@ -592,7 +602,8 @@ function renderBed(id){
     const label = b.block.motivo==='aislamiento' ? (b.block.aislamientoTipo||'aislamiento') : (b.block.motivo==='rotura'?'rotura':'arreglo');
     extra = `<div class="sub">${label}</div>`;
   }
-  return `<div class="${bedClass(id,b)}" onclick="openBed('${id}')">
+  const noEsDelFiltro = filtroMedicoActivo && (b.status!=='ocupada' || b.patient.medico!==filtroMedicoActivo);
+  return `<div class="${bedClass(id,b)}" onclick="openBed('${id}')" style="${noEsDelFiltro?'opacity:.25; filter:grayscale(60%);':''}">
     ${nuevoBadge}
     ${osBadge}
     <div class="icon">${icon}</div>
@@ -640,6 +651,12 @@ function updateOcupacionStats(){
     <div style="font-size:17.7px;">🛏️ General disponible: <strong>${genLibre}/${genTotal}</strong></div>
   `;
 }
+let filtroMedicoActivo = null;
+function toggleFiltroMedico(nombre){
+  filtroMedicoActivo = (filtroMedicoActivo===nombre) ? null : nombre;
+  updateMedicoBanner();
+  renderAll();
+}
 function updateMedicoBanner(){
   const counts = {};
   DOCTORS.forEach(m => counts[m] = 0);
@@ -655,13 +672,16 @@ function updateMedicoBanner(){
   entries.sort((a,b)=>b[1]-a[1]);
   document.getElementById('medicoDonut').innerHTML = entries.map(([nombre,cant])=>{
     const color = DOCTOR_COLORS[nombre] || '#9AA5AD';
+    const esMedicoReal = DOCTORS.includes(nombre);
+    const activo = filtroMedicoActivo===nombre;
     return `
-      <div style="display:flex; align-items:center; justify-content:space-between; padding:9px 0; border-bottom:1px solid var(--line);">
-        <span style="background:${color}; color:#fff; font-weight:800; font-size:13.5px; padding:4px 12px; border-radius:9px;">${nombre}</span>
+      <div onclick="${esMedicoReal?`toggleFiltroMedico('${nombre}')`:''}" style="display:flex; align-items:center; justify-content:space-between; padding:9px 8px; margin:2px 0; border-radius:8px; border-bottom:1px solid var(--line); ${esMedicoReal?'cursor:pointer;':''} ${activo?'background:#EFF7F6; box-shadow:0 0 0 2px var(--teal) inset;':''}">
+        <span style="background:${color}; color:#fff; font-weight:800; font-size:13.5px; padding:4px 12px; border-radius:9px;">${nombre}${activo?' ✓':''}</span>
         <span style="font-size:28px; font-weight:800; color:${color}; line-height:1;">${cant}</span>
       </div>
     `;
   }).join('');
+  document.getElementById('menuMedicoFiltrado').style.display = filtroMedicoActivo ? 'block' : 'none';
 }
 function updateStats(){
   let ocup=0, nodisp=0;
@@ -763,6 +783,7 @@ function renderFields(){
     if(b.status==='ocupada'){
       f.innerHTML += `<button type="button" class="btn ghost" style="width:100%; margin-top:10px;" onclick="startClinico()">📋 Datos clínicos</button>`;
       f.innerHTML += `<button type="button" class="btn ghost" style="width:100%; margin-top:8px;" onclick="startIndicaciones()">💊 Indicaciones médicas</button>`;
+      f.innerHTML += `<button type="button" class="btn ghost" style="width:100%; margin-top:8px;" onclick="startPendientes()">📝 Pendientes${(function(){const p=b.patient.pendientes;if(!p)return '';let n=0;PENDIENTES_CATEGORIAS.forEach(c=>{(p[c.key]||[]).forEach(it=>{if(!it.hecho)n++;});});return n?' ('+n+')':'';})()}</button>`;
       f.innerHTML += `<button type="button" class="btn ghost" style="width:100%; margin-top:8px;" onclick="startMove()">🔀 Mudar a otra cama</button>`;
       f.innerHTML += `<button type="button" class="btn ghost" style="width:100%; margin-top:8px; border-color:var(--rot-bd); color:var(--rot-bd);" onclick="startEgreso()">📤 Registrar egreso</button>`;
     }
@@ -845,7 +866,7 @@ function saveBed(){
     const fechaIngresoHospital = fIH ? isoToEsAr(fIH) : (existing ? existing.fechaIngresoHospital : new Date().toLocaleDateString('es-AR'));
     const fechaIngresoSala = fIS ? isoToEsAr(fIS) : (existing ? existing.fechaIngresoSala : new Date().toLocaleDateString('es-AR'));
     const aislamiento = (!isIso || BATH_PAIRS[id]) ? document.getElementById('fAislamiento').value : 'ninguno';
-    beds[id] = { status:'ocupada', patient:{ nombre, dni, medico, obraSocial, aislamiento, procedencia, fechaIngresoHospital, fechaIngresoSala, clinico: existing && existing.clinico, indicaciones: existing && existing.indicaciones } };
+    beds[id] = { status:'ocupada', patient:{ nombre, dni, medico, obraSocial, aislamiento, procedencia, fechaIngresoHospital, fechaIngresoSala, clinico: existing && existing.clinico, indicaciones: existing && existing.indicaciones, pendientes: existing && existing.pendientes } };
 
     if(aislamiento!=='ninguno'){
       if(!isIso && NEIGHBORS[id]) tryLinkBlock(id, NEIGHBORS[id], aislamiento, 'contigua');
@@ -1017,50 +1038,12 @@ function confirmEgreso(){
     }
   }
 
-  lastEgresoUndo = {
-    id, patientSnapshot: JSON.parse(JSON.stringify(patient)),
-    historialEntry, diagEntries: diagEntriesDeEsteEgreso,
-    notaUTI: motivo==='Pase a UTI' ? notas[notas.length-1] : null
-  };
-
   unlinkFrom(id);
   beds[id] = {status:'libre'};
 
   renderAll();
   saveState();
   closeModal();
-  mostrarBannerDeshacerEgreso();
-}
-function mostrarBannerDeshacerEgreso(){
-  if(!lastEgresoUndo) return;
-  const banner = document.getElementById('deshacerEgresoBanner');
-  document.getElementById('deshacerEgresoBannerText').textContent =
-    '↩️ Se registró el egreso de ' + lastEgresoUndo.patientSnapshot.nombre + ' (cama ' + lastEgresoUndo.id + ').';
-  banner.style.display = 'flex';
-}
-function deshacerUltimoEgreso(){
-  if(!lastEgresoUndo) return;
-  const { id, patientSnapshot, historialEntry, diagEntries, notaUTI } = lastEgresoUndo;
-
-  // Restaurar la cama con el paciente tal cual estaba
-  beds[id] = { status:'ocupada', patient: patientSnapshot };
-
-  // Sacar el egreso del historial (local y pendiente de enviar)
-  historial = historial.filter(h => h !== historialEntry);
-  pendingHistorialAppends = pendingHistorialAppends.filter(h => h !== historialEntry);
-
-  // Sacar los diagnósticos cargados en ese egreso
-  diagnosticosLog = diagnosticosLog.filter(d => !diagEntries.includes(d));
-  pendingDiagnosticosAppends = pendingDiagnosticosAppends.filter(d => !diagEntries.includes(d));
-
-  // Sacar la notita de seguimiento UTI si se había creado
-  if(notaUTI){ notas = notas.filter(n => n !== notaUTI); }
-
-  document.getElementById('deshacerEgresoBanner').style.display = 'none';
-  const undoInfo = { dni: historialEntry.dni, cama: historialEntry.cama, egreso: historialEntry.egreso };
-  lastEgresoUndo = null;
-  renderAll();
-  saveState(undoInfo);
 }
 function startClinico(){
   const b = beds[currentBed];
@@ -1597,6 +1580,14 @@ function saveClinico(){
 /* ---------- Indicaciones médicas ---------- */
 const REFERENCIAS_CACHE_KEY = 'sala11_referencias_cache_v1';
 const HORARIOS_ADMIN = ['01',6,8,10,12,14,16,18,20,22,24];
+const DIETA_OPCIONES = ['General','Hiposódica','Gastroprotectora','Hepatoprotectora','Hiperproteica','Hipocalórica','Hipercalórica','Astringente','Blanda','Procesada','Líquida','Para diabético','Para insuficiencia renal','Para neutropénico'];
+const PENDIENTES_CATEGORIAS = [
+  {key:'laboratorio', label:'Laboratorio', ejemplo:'Ej: ver/pedir labo, LCR, serologías, HC, esputo, toxina CD, cultivos...'},
+  {key:'imagenes', label:'Imágenes', ejemplo:'Ej: realizar/turno eco, TC, ETT, ECG; solicitar informe'},
+  {key:'interconsultas', label:'Interconsultas', ejemplo:'Ej: Neumo, Dermato, Mico, Paliativos, Cirugía, Tórax, Endoscopía...'},
+  {key:'indicaciones', label:'Indicaciones', ejemplo:'Ej: indicar ayuno, carga de K...'},
+  {key:'otros', label:'Otros', ejemplo:'Otro pendiente'}
+];
 let referencias = {};
 const REFERENCIAS_COLLATOR = new Intl.Collator('es', {numeric:true, sensitivity:'base'});
 function ordenarReferencias(data){
@@ -1742,21 +1733,35 @@ function renderIndicacionesFormHTML(ind){
     if(c.tipo==='checklist'){
       html += checklistBlock(c);
     } else if(c.key==='alimentacion'){
+      const dietaSel = (ind.alimentacion && ind.alimentacion.dietas) || [];
       html += `
         <details class="ind-details">
           <summary>${c.label}</summary>
           <div class="ind-details-body">
             <div class="field"><label>Dieta</label>
-              <select id="indAlimentacionDieta">
-                <option value="" ${!ind.alimentacion||!ind.alimentacion.dieta?'selected':''}>-- Elegir --</option>
-                ${(referencias[c.col]||[]).map(op=>`<option value="${escInd(op)}" ${ind.alimentacion&&ind.alimentacion.dieta===op?'selected':''}>${escInd(op)}</option>`).join('')}
-              </select>
+              <div style="display:flex; flex-wrap:wrap; gap:6px;">
+                ${DIETA_OPCIONES.map(op=>`<label style="display:flex; align-items:center; gap:4px; font-size:14.2px; font-weight:600; color:var(--ink); border:1px solid var(--line); border-radius:6px; padding:5px 8px;"><input type="checkbox" class="indDietaCheck" value="${op}" ${dietaSel.includes(op)?'checked':''} style="width:auto;">${op}</label>`).join('')}
+              </div>
             </div>
             <div class="field"><label>Con colaciones</label>
               <select id="indAlimentacionColaciones">
                 <option value="NO" ${!ind.alimentacion||ind.alimentacion.colaciones!=='SI'?'selected':''}>NO</option>
                 <option value="SI" ${ind.alimentacion&&ind.alimentacion.colaciones==='SI'?'selected':''}>SI</option>
               </select>
+            </div>
+            <div class="field">
+              <label style="display:flex; align-items:center; gap:5px;"><input type="checkbox" id="indNPTCheck" ${ind.alimentacion&&ind.alimentacion.npt?'checked':''} style="width:auto;" onchange="document.getElementById('indNPTDetalleWrap').style.display=this.checked?'':'none';"> Nutrición parenteral total (NPT)</label>
+            </div>
+            <div class="field" id="indNPTDetalleWrap" style="${ind.alimentacion&&ind.alimentacion.npt?'':'display:none;'}">
+              <label>Especificar con qué</label>
+              <input id="indNPTDetalle" value="${escInd((ind.alimentacion&&ind.alimentacion.nptDetalle)||'')}">
+            </div>
+            <div class="field">
+              <label style="display:flex; align-items:center; gap:5px;"><input type="checkbox" id="indSNGCheck" ${ind.alimentacion&&ind.alimentacion.sng?'checked':''} style="width:auto;" onchange="document.getElementById('indSNGDetalleWrap').style.display=this.checked?'':'none';"> Alimentación por SNG</label>
+            </div>
+            <div class="field" id="indSNGDetalleWrap" style="${ind.alimentacion&&ind.alimentacion.sng?'':'display:none;'}">
+              <label>Especificar con qué</label>
+              <input id="indSNGDetalle" value="${escInd((ind.alimentacion&&ind.alimentacion.sngDetalle)||'')}">
             </div>
           </div>
         </details>
@@ -1797,6 +1802,122 @@ function renderIndicacionesFormHTML(ind){
   `;
   return html;
 }
+/* ---------- Pendientes por paciente (lista libre por categoría) ---------- */
+let pendientesWorking = null;
+function startPendientes(){
+  const b = beds[currentBed];
+  pendientesWorking = JSON.parse(JSON.stringify(b.patient.pendientes || {laboratorio:[],imagenes:[],interconsultas:[],indicaciones:[],otros:[]}));
+  document.getElementById('modalActionsBtns').style.display = 'none';
+  renderPendientesForm();
+}
+function renderPendientesForm(){
+  const f = document.getElementById('modalFields');
+  f.innerHTML = PENDIENTES_CATEGORIAS.map(cat => {
+    const items = pendientesWorking[cat.key] || [];
+    const itemsHtml = items.map((it,idx) => `
+      <div style="display:flex; align-items:center; gap:8px; padding:5px 0; ${it.hecho?'opacity:.5;':''}">
+        <input type="checkbox" ${it.hecho?'checked':''} onchange="togglePendienteHecho('${cat.key}',${idx})" style="width:auto;">
+        <span style="flex:1; font-size:14px; ${it.hecho?'text-decoration:line-through;':''}">${escInd(it.texto)}</span>
+        <button type="button" onclick="quitarPendiente('${cat.key}',${idx})" style="border:none; background:none; color:var(--rot-bd); cursor:pointer; font-size:16px; padding:2px 6px;">✕</button>
+      </div>
+    `).join('') || '<p style="color:var(--ink-soft); font-size:13px; margin:4px 0;">Sin pendientes en esta categoría.</p>';
+    return `
+      <details class="ind-details" open>
+        <summary>${cat.label}</summary>
+        <div class="ind-details-body">
+          ${itemsHtml}
+          <div style="display:flex; gap:6px; margin-top:8px;">
+            <input id="nuevoPendiente_${cat.key}" placeholder="${cat.ejemplo}" style="flex:1;" onkeydown="if(event.key==='Enter'){event.preventDefault(); agregarPendiente('${cat.key}');}">
+            <button type="button" class="btn" style="width:auto;" onclick="agregarPendiente('${cat.key}')">+</button>
+          </div>
+        </div>
+      </details>
+    `;
+  }).join('') + `
+    <button type="button" class="btn" style="width:100%; margin-top:14px;" onclick="savePendientes()">Guardar pendientes</button>
+    <button type="button" class="btn ghost" style="width:100%; margin-top:8px;" onclick="cancelPendientes()">Volver</button>
+  `;
+}
+function agregarPendiente(cat){
+  const input = document.getElementById('nuevoPendiente_'+cat);
+  const texto = input.value.trim();
+  if(!texto) return;
+  pendientesWorking[cat].push({id:'p'+Date.now(), texto, hecho:false, creado:new Date().toLocaleDateString('es-AR')});
+  renderPendientesForm();
+}
+function togglePendienteHecho(cat, idx){
+  pendientesWorking[cat][idx].hecho = !pendientesWorking[cat][idx].hecho;
+  renderPendientesForm();
+}
+function quitarPendiente(cat, idx){
+  pendientesWorking[cat].splice(idx,1);
+  renderPendientesForm();
+}
+function savePendientes(){
+  beds[currentBed].patient.pendientes = pendientesWorking;
+  document.getElementById('modalActionsBtns').style.display = 'flex';
+  renderAll();
+  saveState();
+  closeModal();
+}
+function cancelPendientes(){
+  document.getElementById('modalActionsBtns').style.display = 'flex';
+  renderFields();
+}
+let pendientesResumenMedicoActual = null;
+function openPendientesResumen(medicoOverride){
+  const medico = medicoOverride || filtroMedicoActivo;
+  if(!medico) return;
+  pendientesResumenMedicoActual = medico;
+  const camas = Object.keys(beds).filter(id => beds[id].status==='ocupada' && beds[id].patient.medico===medico);
+  const fecha = new Date().toLocaleDateString('es-AR');
+  let html = `
+    <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:2px solid var(--teal); padding-bottom:8px; margin-bottom:10px;">
+      <div style="font-size:15px; font-weight:800; letter-spacing:1px; color:var(--teal); text-transform:uppercase;">Sala 11</div>
+      <div style="font-size:19px; font-weight:800; text-transform:uppercase;">Pendientes — ${escInd(medico)}</div>
+      <div style="font-size:15px; font-weight:700; color:var(--teal);">${fecha}</div>
+    </div>
+  `;
+  let totalPend = 0;
+  camas.forEach(id=>{
+    const patient = beds[id].patient;
+    const pend = patient.pendientes || {};
+    const items = [];
+    PENDIENTES_CATEGORIAS.forEach(cat=>{
+      (pend[cat.key]||[]).forEach((it,idx)=>{
+        if(!it.hecho) items.push({texto: it.texto, cat: cat.label, catKey: cat.key, idx});
+      });
+    });
+    if(items.length){
+      totalPend += items.length;
+      html += `<div style="margin-bottom:16px; border:1px solid var(--line); border-radius:10px; padding:10px 13px;">
+        <div style="font-weight:800; font-size:14.5px; margin-bottom:6px;">Cama ${id} — ${escInd(patient.nombre||'')}</div>`;
+      items.forEach(it=>{
+        html += `<div style="display:flex; align-items:center; gap:8px; padding:3px 0; font-size:13.5px;">
+          <input type="checkbox" onchange="marcarPendienteHechoResumen('${id}','${it.catKey}',${it.idx})" style="width:auto;">
+          <span><b>${it.cat}:</b> ${escInd(it.texto)}</span>
+        </div>`;
+      });
+      html += `</div>`;
+    }
+  });
+  if(!totalPend) html += '<p style="color:var(--ink-soft); text-align:center; padding:20px 0;">No hay pendientes sin resolver para este médico. 🎉</p>';
+  document.getElementById('pendientesResumenBody').innerHTML = html;
+  document.getElementById('pendientesResumenOverlay').classList.add('show');
+}
+function marcarPendienteHechoResumen(camaId, catKey, idx){
+  const patient = beds[camaId].patient;
+  if(patient.pendientes && patient.pendientes[catKey] && patient.pendientes[catKey][idx]){
+    patient.pendientes[catKey][idx].hecho = true;
+  }
+  saveState();
+  openPendientesResumen(pendientesResumenMedicoActual);
+}
+function closePendientesResumen(){ document.getElementById('pendientesResumenOverlay').classList.remove('show'); }
+function imprimirPendientesAhora(){
+  document.body.classList.add('print-mode');
+  window.print();
+}
 function startIndicaciones(){
   const b = beds[currentBed];
   const ind = b.patient.indicaciones || {};
@@ -1818,8 +1939,12 @@ function collectIndicacionesFromForm(){
       ind[c.key] = [...document.querySelectorAll('.indCheck_'+c.key+':checked')].map(el=>el.value);
     } else if(c.key==='alimentacion'){
       ind.alimentacion = {
-        dieta: document.getElementById('indAlimentacionDieta').value,
-        colaciones: document.getElementById('indAlimentacionColaciones').value
+        dietas: [...document.querySelectorAll('.indDietaCheck:checked')].map(el=>el.value),
+        colaciones: document.getElementById('indAlimentacionColaciones').value,
+        npt: document.getElementById('indNPTCheck').checked,
+        nptDetalle: document.getElementById('indNPTCheck').checked ? document.getElementById('indNPTDetalle').value.trim() : '',
+        sng: document.getElementById('indSNGCheck').checked,
+        sngDetalle: document.getElementById('indSNGCheck').checked ? document.getElementById('indSNGDetalle').value.trim() : ''
       };
     } else if(c.key==='php'){
       ind.php = {
@@ -1848,47 +1973,57 @@ function cancelIndicaciones(){
 function buildIndicacionesPrintHTML(patient, ind, camaId){
   const fecha = new Date().toLocaleDateString('es-AR');
   const sinNumero = (label) => label.replace(/^\d+\.\s*/, '');
-  const seccionTitulo = (titulo) => `<div style="background:var(--teal); color:#fff; font-weight:700; font-size:13.5px; padding:6px 10px; border-radius:4px; margin:14px 0 6px; text-transform:uppercase; letter-spacing:.3px;">${titulo}</div>`;
-  const th = (txt) => `<th style="border:1px solid #444; padding:5px 6px; background:#EDEFF0; text-align:center; font-size:12px;">${txt}</th>`;
-  const thHorario = (txt) => `<th style="border:1px solid #444; padding:4px 2px; background:#EDEFF0; text-align:center; font-size:11px; width:26px;">${txt}</th>`;
-  const thComentarios = (txt) => `<th style="border:1px solid #444; padding:5px 6px; background:#EDEFF0; text-align:center; font-size:12px; width:110px;">${txt}</th>`;
-  const td = (txt) => `<td style="border:1px solid #444; padding:5px 6px; font-size:12.5px; word-break:break-word;">${txt||''}</td>`;
-  const tdComentario = (txt) => `<td style="border:1px solid #444; padding:5px 6px; font-size:11.5px; word-break:break-word; width:110px;">${txt||''}</td>`;
-  const tdHorario = (marcado) => `<td style="border:1px solid #444; padding:4px 3px; text-align:center; font-size:16px; font-weight:800; color:var(--teal); line-height:1;">${marcado?'✓':''}</td>`;
+  const seccionTitulo = (titulo) => `<div style="background:var(--teal); color:#fff; font-weight:700; font-size:11px; padding:4px 8px; border-radius:4px; margin:8px 0 4px; text-transform:uppercase; letter-spacing:.3px;">${titulo}</div>`;
+  const listaItems = (arr) => arr.map(v=>`<div style="font-size:11px; padding:1px 0 1px 4px; line-height:1.3;">• ${escInd(v)}</div>`).join('');
+  const th = (txt) => `<th style="border:1px solid #444; padding:2px 4px; background:#EDEFF0; text-align:center; font-size:10px;">${txt}</th>`;
+  const thHorario = (txt) => `<th style="border:1px solid #444; padding:2px 1px; background:#EDEFF0; text-align:center; font-size:9px; width:20px;">${txt}</th>`;
+  const thComentarios = (txt) => `<th style="border:1px solid #444; padding:2px 4px; background:#EDEFF0; text-align:center; font-size:10px; width:95px;">${txt}</th>`;
+  const td = (txt) => `<td style="border:1px solid #444; padding:2px 4px; font-size:10.5px; line-height:1.25; word-break:break-word;">${txt||''}</td>`;
+  const tdComentario = (txt) => `<td style="border:1px solid #444; padding:2px 4px; font-size:9.5px; line-height:1.2; word-break:break-word; width:95px;">${txt||''}</td>`;
+  const tdHorario = (marcado) => `<td style="border:1px solid #444; padding:1px 2px; text-align:center; font-size:12px; font-weight:800; color:var(--teal); line-height:1;">${marcado?'✓':''}</td>`;
   const colspanTotal = 3 + HORARIOS_ADMIN.length + 1;
-  const tituloFila = (titulo) => `<tr><td colspan="${colspanTotal}" style="background:var(--teal); color:#fff; font-weight:700; font-size:12.5px; padding:5px 8px; text-transform:uppercase; letter-spacing:.3px; border:1px solid #444;">${titulo}</td></tr>`;
+  const tituloFila = (titulo) => `<tr><td colspan="${colspanTotal}" style="background:var(--teal); color:#fff; font-weight:700; font-size:10.5px; padding:3px 6px; text-transform:uppercase; letter-spacing:.3px; border:1px solid #444;">${titulo}</td></tr>`;
 
   let html = `
-    <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:2px solid var(--teal); padding-bottom:10px; margin-bottom:10px;">
-      <div style="font-size:17px; font-weight:800; letter-spacing:1px; color:var(--teal); text-transform:uppercase; min-width:80px;">Sala 11</div>
+    <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:2px solid var(--teal); padding-bottom:6px; margin-bottom:6px;">
+      <div style="font-size:14px; font-weight:800; letter-spacing:1px; color:var(--teal); text-transform:uppercase; min-width:65px;">Sala 11</div>
       <div style="text-align:center; flex:1;">
-        <div style="font-size:29px; font-weight:800; text-transform:uppercase; letter-spacing:.3px;">${escInd(patient.nombre||'(sin nombre)')}</div>
-        <div style="font-size:16px; color:#333; margin-top:5px;">DNI ${escInd(patient.dni||'-')} &nbsp;·&nbsp; ${patient.obraSocial?'Con obra social':'Sin obra social'} &nbsp;·&nbsp; ${fecha}</div>
+        <div style="font-size:20px; font-weight:800; text-transform:uppercase; letter-spacing:.3px;">${escInd(patient.nombre||'(sin nombre)')}</div>
+        <div style="font-size:12px; color:#333; margin-top:2px;">DNI ${escInd(patient.dni||'-')} &nbsp;·&nbsp; ${patient.obraSocial?'Con obra social':'Sin obra social'} &nbsp;·&nbsp; ${fecha}</div>
       </div>
-      <div style="background:var(--teal); color:#fff; font-size:32px; font-weight:800; border-radius:8px; padding:6px 18px; min-width:70px; text-align:center;">${escInd(camaId)}</div>
+      <div style="background:var(--teal); color:#fff; font-size:22px; font-weight:800; border-radius:6px; padding:3px 12px; min-width:50px; text-align:center;">${escInd(camaId)}</div>
     </div>
   `;
   if((ind.aislamiento||[]).length){
     html += seccionTitulo('Aislamiento');
-    html += `<p style="margin:0 0 4px;">${ind.aislamiento.map(escInd).join(', ')}</p>`;
+    html += listaItems(ind.aislamiento);
   }
   html += seccionTitulo('Control de signos vitales por turno');
-  html += `<p style="margin:0 0 4px;">Control de TA, T°, FC, FR y SO2 por turno.</p>`;
-  if(ind.alimentacion && ind.alimentacion.dieta){
+  html += `<div style="font-size:11px; padding:1px 0 1px 4px;">Control de TA, T°, FC, FR y SO2 por turno.</div>`;
+  const tieneAlimentacion = ind.alimentacion && ((ind.alimentacion.dietas||[]).length || ind.alimentacion.npt || ind.alimentacion.sng);
+  if(tieneAlimentacion){
     html += seccionTitulo('Alimentación');
-    html += `<p style="margin:0 0 4px;">${escInd(ind.alimentacion.dieta)} — Colaciones: ${ind.alimentacion.colaciones==='SI'?'Sí':'No'}</p>`;
+    if((ind.alimentacion.dietas||[]).length){
+      html += `<div style="font-size:11px; padding:1px 0 1px 4px;">Dieta: ${ind.alimentacion.dietas.map(escInd).join(', ')} — Colaciones: ${ind.alimentacion.colaciones==='SI'?'Sí':'No'}</div>`;
+    }
+    if(ind.alimentacion.npt){
+      html += `<div style="font-size:11px; padding:1px 0 1px 4px;">Nutrición parenteral total: ${escInd(ind.alimentacion.nptDetalle||'(sin especificar)')}</div>`;
+    }
+    if(ind.alimentacion.sng){
+      html += `<div style="font-size:11px; padding:1px 0 1px 4px;">Alimentación por SNG: ${escInd(ind.alimentacion.sngDetalle||'(sin especificar)')}</div>`;
+    }
   }
   if(ind.php && (ind.php.solucion || ind.php.goteo || (ind.php.suplementos||[]).length)){
     html += seccionTitulo('Plan de hidratación parenteral');
-    html += `<p style="margin:0 0 4px;">${escInd(ind.php.solucion||'')}${ind.php.goteo?' — Goteo: '+escInd(ind.php.goteo):''}</p>`;
+    html += `<div style="font-size:11px; padding:1px 0 1px 4px;">${escInd(ind.php.solucion||'')}${ind.php.goteo?' — Goteo: '+escInd(ind.php.goteo):''}</div>`;
     if((ind.php.suplementos||[]).length){
-      html += `<p style="margin:0 0 4px;"><b>Suplementos:</b> ${ind.php.suplementos.map(s=>escInd(s.droga)).join(', ')}</p>`;
+      html += `<div style="font-size:11px; padding:1px 0 1px 4px;"><b>Suplementos:</b> ${ind.php.suplementos.map(s=>escInd(s.droga)).join(', ')}</div>`;
     }
   }
   // Tabla única para las categorías de fármacos con horarios (5-12), columnas fijas en toda la hoja
   const categoriasConDatos = INDICACIONES_CATEGORIAS.filter(c=>c.tipo==='lineas' && (ind[c.key]||[]).length);
   if(categoriasConDatos.length){
-    let tablaHtml = `<table style="width:100%; border-collapse:collapse; margin-top:6px;">
+    let tablaHtml = `<table style="width:100%; border-collapse:collapse; margin-top:4px;">
       <thead><tr>${th('Droga')}${th('Dosis')}${th('Vía')}${HORARIOS_ADMIN.map(h=>thHorario(h)).join('')}${thComentarios('Comentarios')}</tr></thead>
       <tbody>`;
     categoriasConDatos.forEach(c=>{
@@ -1903,23 +2038,50 @@ function buildIndicacionesPrintHTML(patient, ind, camaId){
   }
   if((ind.medidasSoporte||[]).length){
     html += seccionTitulo('Medidas de soporte');
-    html += `<p style="margin:0 0 4px;">${ind.medidasSoporte.map(escInd).join(', ')}</p>`;
+    html += listaItems(ind.medidasSoporte);
   }
-  html += `<p style="margin-top:36px; font-size:13px; text-align:right;">Firma y sello: ________________________</p>`;
   return html;
 }
 function openIndicacionesPrint(){
   const ind = collectIndicacionesFromForm();
+  beds[currentBed].patient.indicaciones = ind;
+  saveState();
   const patient = beds[currentBed].patient;
   document.getElementById('indicacionesPrintSheet').innerHTML = buildIndicacionesPrintHTML(patient, ind, currentBed);
   document.getElementById('bedOverlay').classList.remove('show');
   document.getElementById('indicacionesOverlay').classList.add('show');
 }
+let indicacionesModoLote = false;
+function imprimirIndicacionesDeMisPacientes(){
+  if(!filtroMedicoActivo) return;
+  const camasConIndicaciones = Object.keys(beds).filter(id => {
+    const b = beds[id];
+    return b.status==='ocupada' && b.patient.medico===filtroMedicoActivo && b.patient.indicaciones;
+  });
+  if(!camasConIndicaciones.length){
+    alert('Ninguno de los pacientes de ' + filtroMedicoActivo + ' tiene indicaciones cargadas todavía.');
+    return;
+  }
+  indicacionesModoLote = true;
+  const hojas = camasConIndicaciones.map((id, i) => {
+    const patient = beds[id].patient;
+    const contenido = buildIndicacionesPrintHTML(patient, patient.indicaciones, id);
+    return `<div class="${i>0?'print-page-break':''}">${contenido}</div>`;
+  }).join('');
+  document.getElementById('indicacionesPrintSheet').innerHTML = hojas;
+  document.getElementById('indicacionesOverlay').classList.add('show');
+}
 function closeIndicacionesPrint(){
   document.getElementById('indicacionesOverlay').classList.remove('show');
-  document.getElementById('bedOverlay').classList.add('show');
+  if(indicacionesModoLote){
+    indicacionesModoLote = false;
+  } else {
+    document.getElementById('bedOverlay').classList.add('show');
+  }
 }
+let volviendoDeImprimirIndicaciones = false;
 function imprimirIndicacionesAhora(){
+  volviendoDeImprimirIndicaciones = true;
   document.body.classList.add('print-mode');
   window.print();
 }
@@ -2003,19 +2165,25 @@ function openParte(){
   const fecha = new Date().toLocaleDateString('es-AR');
   document.getElementById('parteFecha').textContent = fecha;
 
-  const subrows = Object.entries(grupos).map(([label,count])=>
-    `<tr class="subrow"><td>No disponible por ${label}</td><td>${count}</td></tr>`
-  ).join('');
+  const filaParte = (label, value, bg, tx) =>
+    `<tr>
+      <td style="padding:10px 16px; background:${bg}; color:${tx}; font-weight:700; font-size:18px; border:1px solid #fff;">${label}</td>
+      <td style="padding:10px 16px; background:${bg}; color:${tx}; text-align:right; font-weight:800; font-size:22px; border:1px solid #fff;">${value}</td>
+    </tr>`;
+  const filaSub = (label, value) =>
+    `<tr>
+      <td style="padding:7px 16px 7px 32px; background:#FBE8E6; color:var(--rot-tx); font-weight:500; font-size:15px; border:1px solid #fff;">${label}</td>
+      <td style="padding:7px 16px; background:#FBE8E6; color:var(--rot-tx); text-align:right; font-weight:700; font-size:17px; border:1px solid #fff;">${value}</td>
+    </tr>`;
 
-  document.getElementById('parteTablaBody').innerHTML = `
-    <tr><td>N° de sala</td><td>11</td></tr>
-    <tr><td>Fecha</td><td>${fecha}</td></tr>
-    <tr><td>Dotación total de camas</td><td>20</td></tr>
-    <tr><td>Camas ocupadas</td><td>${ocup}</td></tr>
-    <tr><td>Camas no disponibles</td><td>${nodisp}</td></tr>
-    ${subrows}
-    <tr><td>Camas disponibles</td><td>${20-ocup-nodisp}</td></tr>
-  `;
+  const subrows = Object.entries(grupos).map(([label,count])=> filaSub('No disponible por '+label, count)).join('');
+
+  document.getElementById('parteTablaBody').innerHTML =
+    filaParte('Dotación total de camas', '20', '#EFF7F6', 'var(--teal-dark)') +
+    filaParte('Camas ocupadas', ocup, '#EAF3EC', 'var(--libre-tx)') +
+    filaParte('Camas disponibles', 20-ocup-nodisp, '#EAF3EC', 'var(--libre-tx)') +
+    filaParte('Camas no disponibles', nodisp, '#FBE8E6', 'var(--rot-tx)') +
+    subrows;
   document.getElementById('parteOverlay').classList.add('show');
 }
 function closeParte(){ document.getElementById('parteOverlay').classList.remove('show'); }
@@ -2023,7 +2191,20 @@ function imprimirAhora(){
   document.body.classList.add('print-mode');
   window.print();
 }
-window.addEventListener('afterprint', ()=> document.body.classList.remove('print-mode'));
+window.addEventListener('afterprint', ()=> {
+  document.body.classList.remove('print-mode');
+  if(volviendoDeImprimirIndicaciones){
+    volviendoDeImprimirIndicaciones = false;
+    document.getElementById('indicacionesOverlay').classList.remove('show');
+    if(indicacionesModoLote){
+      indicacionesModoLote = false;
+    } else {
+      document.getElementById('modalActionsBtns').style.display = 'flex';
+      renderAll();
+      if(currentBed) openBed(currentBed);
+    }
+  }
+});
 
 /* ---------- Revisión matutina ---------- */
 const CHART_COLORS = ['#0B5E59','#2563AF','#B9821D','#C0392B','#6E4FA0','#2E7D5B','#8A611A','#1B4C86'];
@@ -2214,7 +2395,7 @@ function computeTendenciaDiagnosticoReciente(mesesAtras){
 }
 
 /* ---------- Modo inactivo (recordatorio visual) ---------- */
-const IDLE_MS = 45000; // 45 segundos sin actividad
+const IDLE_MS = 15000; // 15 segundos sin actividad (antes de que a los 30s se recargue la página, para que este efecto llegue a verse)
 let idleTimer = null;
 function resetIdleTimer(){
   document.body.classList.remove('idle-mode');
@@ -2225,6 +2406,30 @@ function resetIdleTimer(){
   window.addEventListener(evt, resetIdleTimer, {passive:true});
 });
 resetIdleTimer();
+
+/* ---------- Actualización automática de la página tras inactividad (una sola vez por período) ---------- */
+const AUTO_RELOAD_MS = 30000; // 30 segundos sin actividad
+let lastActivityTime = Date.now();
+let autoReloadedThisIdle = (function(){ try{ return sessionStorage.getItem('sala11_auto_reloaded')==='1'; }catch(e){ return false; } })();
+['mousemove','mousedown','keydown','touchstart','scroll'].forEach(evt=>{
+  window.addEventListener(evt, ()=>{
+    lastActivityTime = Date.now();
+    if(autoReloadedThisIdle){
+      autoReloadedThisIdle = false;
+      try{ sessionStorage.removeItem('sala11_auto_reloaded'); }catch(e){}
+    }
+  }, {passive:true});
+});
+setInterval(()=>{
+  if(autoReloadedThisIdle) return; // ya se recargó una vez en este período de inactividad, no insistir
+  const inactivo = Date.now() - lastActivityTime >= AUTO_RELOAD_MS;
+  const hayModalAbierto = !!document.querySelector('.overlay.show');
+  if(inactivo && !hayModalAbierto){
+    autoReloadedThisIdle = true;
+    try{ sessionStorage.setItem('sala11_auto_reloaded', '1'); }catch(e){}
+    location.reload();
+  }
+}, 2000);
 
 /* ---------- Episodio no evaluado (carga retroactiva) ---------- */
 function openRetro(){
@@ -2416,11 +2621,13 @@ function renderNotas(){
     const c = STICKY_COLORS[i % STICKY_COLORS.length];
     const style = n.tipo==='uti' ? 'background:#EFE9F7 !important; border:3px solid #6E4FA0 !important;'
       : n.tipo==='clinicoFaltante' ? 'background:#FDF3DC !important; border:3px solid #B9821D !important;'
+      : n.tipo==='pendientesRecordatorio' ? `background:${DOCTOR_COLORS[n.dni]||'#2563AF'} !important; color:#fff !important; cursor:pointer;`
       : `background:${c.bg} !important; color:${c.tx} !important;`;
+    const clickAttr = n.tipo==='pendientesRecordatorio' ? ` onclick="openPendientesResumen('${n.dni}')"` : '';
     return `
-    <div class="sticky" style="${style}">
+    <div class="sticky" style="${style}"${clickAttr}>
       <span>${n.texto}</span>
-      <button type="button" class="done-btn" title="Marcar como hecho" onclick="completeNota('${n.id}')">✓</button>
+      <button type="button" class="done-btn" title="Marcar como hecho" onclick="event.stopPropagation(); completeNota('${n.id}')">✓</button>
     </div>
   `;
   }).join('');
@@ -2437,6 +2644,23 @@ function addNota(){
 }
 function completeNota(id){
   notas = notas.filter(n => n.id !== id);
+  renderNotas();
+  saveState();
+}
+const PENDIENTES_DIA_MEDICO = { 1:'Lau', 2:'Nati', 4:'Gas', 5:'Grace' }; // getDay(): 0=domingo,1=lunes,2=martes,3=miércoles,4=jueves,5=viernes,6=sábado
+function checkRecordatorioPendientes(){
+  const hoy = new Date();
+  const medico = PENDIENTES_DIA_MEDICO[hoy.getDay()];
+  if(!medico) return;
+  const fechaHoy = hoy.toLocaleDateString('es-AR');
+  const textoEsperado = '📝 Pase de pacientes (' + medico + ')';
+  const yaExiste = notas.some(n => n.tipo==='pendientesRecordatorio' && n.dni===medico && n.creada===fechaHoy);
+  if(yaExiste) return;
+  notas.push({
+    id: 'n'+Date.now(), tipo: 'pendientesRecordatorio', dni: medico,
+    texto: textoEsperado,
+    creada: fechaHoy
+  });
   renderNotas();
   saveState();
 }
@@ -3112,20 +3336,23 @@ function manualSync(){ saveState(); }
 async function loadState(){
   if(!backendConfigured()) return;
 
+  // Mostrar la última copia guardada al instante (sin esperar la red), y actualizar en segundo plano
+  const cache = loadLocalCache();
+  if(cache && cache.data){
+    allIds.forEach(id => { beds[id] = cache.data.beds[id] || {status:'libre'}; });
+    historial = cache.data.historial || [];
+    diagnosticosLog = cache.data.diagnosticosLog || [];
+    notas = cache.data.notas || [];
+    conflictivos = cache.data.conflictivos || [];
+    desenlacesUTI = cache.data.desenlacesUTI || [];
+    pendingDesenlaceUTIAppends = cache.data.pendingDesenlaceUTIAppends || [];
+    pendingHistorialAppends = cache.data.pendingHistorialAppends || [];
+    pendingDiagnosticosAppends = cache.data.pendingDiagnosticosAppends || [];
+    renderAll();
+  }
+
   // Si quedaron cambios de una sesión offline anterior sin sincronizar, priorizarlos e intentar reenviarlos ahora
   if(hasPendingSync()){
-    const cache = loadLocalCache();
-    if(cache && cache.data){
-      allIds.forEach(id => { beds[id] = cache.data.beds[id] || {status:'libre'}; });
-      historial = cache.data.historial || [];
-      diagnosticosLog = cache.data.diagnosticosLog || [];
-      notas = cache.data.notas || [];
-      conflictivos = cache.data.conflictivos || [];
-      desenlacesUTI = cache.data.desenlacesUTI || [];
-      pendingDesenlaceUTIAppends = cache.data.pendingDesenlaceUTIAppends || [];
-      pendingHistorialAppends = cache.data.pendingHistorialAppends || [];
-      pendingDiagnosticosAppends = cache.data.pendingDiagnosticosAppends || [];
-    }
     await saveState();
     return;
   }
@@ -3149,17 +3376,7 @@ async function loadState(){
     setOfflineBanner(false);
   }catch(e){
     console.error('No se pudo cargar desde Google Sheets', e);
-    const cache = loadLocalCache();
     if(cache && cache.data){
-      allIds.forEach(id => { beds[id] = cache.data.beds[id] || {status:'libre'}; });
-      historial = cache.data.historial || [];
-      diagnosticosLog = cache.data.diagnosticosLog || [];
-      notas = cache.data.notas || [];
-      conflictivos = cache.data.conflictivos || [];
-      desenlacesUTI = cache.data.desenlacesUTI || [];
-      pendingDesenlaceUTIAppends = cache.data.pendingDesenlaceUTIAppends || [];
-      pendingHistorialAppends = cache.data.pendingHistorialAppends || [];
-      pendingDiagnosticosAppends = cache.data.pendingDiagnosticosAppends || [];
       setOfflineBanner(true, cache.savedAt, false);
     } else {
       alert('No se pudo conectar con la base de datos y todavía no hay ninguna copia local guardada en esta computadora.');
@@ -3212,10 +3429,10 @@ async function saveState(undoEgreso, completarClinico){
     document.querySelector('#reviewBanner button').style.display = 'none';
   }
   initUltimaVisitaMedico();
-  await loadState();
-  await loadReferencias();
+  await Promise.all([loadState(), loadReferencias()]);
   renderAll();
   checkNuevosIngresos();
+  checkRecordatorioPendientes();
 })();
 </script>
 </body>
