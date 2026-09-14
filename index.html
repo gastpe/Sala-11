@@ -1679,9 +1679,8 @@ function renderIndicacionesFormHTML(ind){
   `;
   let html = '';
   if(!Object.keys(referencias).length){
-    html += `<p class="sub-h" style="color:var(--rot-tx);">⚠️ No se pudieron cargar las listas de referencias (planilla Sala11Indicaciones). Revisá la conexión y tocá "🔄 Actualizar listas".</p>`;
+    html += `<p class="sub-h" style="color:var(--rot-tx);">⚠️ No se pudieron cargar las listas de referencias (planilla Sala11Indicaciones). Recargá la página para reintentar.</p>`;
   }
-  html += `<button type="button" class="btn ghost" style="width:100%; margin-bottom:12px;" onclick="refreshReferencias()">🔄 Actualizar listas</button>`;
   INDICACIONES_CATEGORIAS.forEach(c=>{
     if(c.tipo==='checklist'){
       html += checklistBlock(c);
@@ -1754,18 +1753,6 @@ function startIndicaciones(){
   });
   const supl = (ind.php && ind.php.suplementos) || [];
   supl.forEach(entry=>addIndLinea('php','4.2 SUPLEMENTO', entry, false, true));
-}
-function refreshReferencias(){
-  loadReferencias(true).then(ok=>{
-    if(ok){
-      alert('✅ Listas actualizadas.');
-    } else {
-      alert('No se pudieron actualizar las listas. Verificá que el Apps Script tenga implementada la última versión (Implementar → Administrar implementaciones → editar → Nueva versión).');
-    }
-    if(currentBed && beds[currentBed] && beds[currentBed].status==='ocupada'){
-      startIndicaciones();
-    }
-  });
 }
 function collectIndicacionesFromForm(){
   const ind = {};
