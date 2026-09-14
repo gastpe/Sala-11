@@ -1757,7 +1757,9 @@ function startIndicaciones(){
 }
 function refreshReferencias(){
   loadReferencias(true).then(ok=>{
-    if(!ok){
+    if(ok){
+      alert('✅ Listas actualizadas.');
+    } else {
       alert('No se pudieron actualizar las listas. Verificá que el Apps Script tenga implementada la última versión (Implementar → Administrar implementaciones → editar → Nueva versión).');
     }
     if(currentBed && beds[currentBed] && beds[currentBed].status==='ocupada'){
