@@ -690,7 +690,15 @@ async function loadState(){
   try{
     const res = await fetch(APPS_SCRIPT_URL + '?_=' + Date.now(), {cache:'no-store'});
     const data = await res.json();
-    if(data.beds){ allIds.forEach(id => { beds[id] = data.beds[id] || {status:'libre'}; }); }
+    // SALVAGUARDA: si la planilla devolvió una foto sospechosamente vacía (por un hipo pasajero
+    // de Google/la red), NO la tomamos como válida — mantenemos lo que ya teníamos y NO marcamos
+    // esto como "lectura confirmada", para que ningún guardado posterior se base en esta foto rota.
+    const data_confiable = data.beds && Object.keys(data.beds).length >= allIds.length / 2;
+    if(!data_confiable){
+      console.error('loadState: la lectura de la planilla vino sospechosamente vacía, se ignora para no pisar lo que ya había.');
+      throw new Error('Lectura del servidor sospechosamente vacía (menos de la mitad de las camas esperadas)');
+    }
+    allIds.forEach(id => { beds[id] = data.beds[id] || {status:'libre'}; });
     setOfflineBanner(false);
     lastKnownServerBeds = JSON.parse(JSON.stringify(beds));
     if(pendingHistorialAppends.length){
@@ -710,26 +718,38 @@ async function loadState(){
   }
 }
 async function saveState(){
+  // SALVAGUARDA CRÍTICA: si todavía no tuvimos ninguna lectura confirmada del servidor en esta
+  // sesión, jamás empujamos "beds" — podría estar vacío o desactualizado y borraría el Censo.
+  if(!lastKnownServerBeds){
+    console.error('saveState: se abortó el guardado porque todavía no hay una lectura confirmada del servidor (riesgo de vaciar el Censo).');
+    setPendingSync(true);
+    setOfflineBanner(true, new Date().toISOString(), true);
+    return;
+  }
+
   // Antes de guardar: traer la foto actual del servidor, y para cada cama que NO hayamos
   // tocado nosotros desde la última lectura, usar esa foto fresca en vez de la que tengamos
   // en memoria (que puede estar vieja si esta pestaña quedó abierta mucho tiempo). Esto evita
   // pisar Datos clínicos/Indicaciones/Pendientes que los médicos hayan cargado mientras tanto.
-  if(lastKnownServerBeds){
-    try{
-      const resFresco = await fetch(APPS_SCRIPT_URL + '?_=' + Date.now(), {cache:'no-store'});
-      const fresco = await resFresco.json();
-      if(fresco.beds){
-        allIds.forEach(id=>{
-          const local = JSON.stringify(beds[id]);
-          const conocido = JSON.stringify(lastKnownServerBeds[id]);
-          if(local === conocido){
-            beds[id] = fresco.beds[id] || {status:'libre'};
-          }
-        });
-      }
-    }catch(e){
-      console.error('No se pudo refrescar antes de guardar, se sigue con lo que había en memoria', e);
+  try{
+    const resFresco = await fetch(APPS_SCRIPT_URL + '?_=' + Date.now(), {cache:'no-store'});
+    const fresco = await resFresco.json();
+    // SALVAGUARDA: si la respuesta fresca viene sospechosamente vacía, no confiamos en ella para
+    // "actualizar" camas que no tocamos — mejor seguir con lo que había en memoria.
+    const fresco_confiable = fresco.beds && Object.keys(fresco.beds).length >= allIds.length / 2;
+    if(fresco_confiable){
+      allIds.forEach(id=>{
+        const local = JSON.stringify(beds[id]);
+        const conocido = JSON.stringify(lastKnownServerBeds[id]);
+        if(local === conocido){
+          beds[id] = fresco.beds[id] || {status:'libre'};
+        }
+      });
+    } else if(fresco.beds){
+      console.error('saveState: la lectura de refresco vino sospechosamente vacía, se ignora y se sigue con lo que había en memoria.');
     }
+  }catch(e){
+    console.error('No se pudo refrescar antes de guardar, se sigue con lo que había en memoria', e);
   }
 
   // OJO: nunca se manda "notas" ni "conflictivos" a propósito — así esta vista nunca los toca ni los borra.

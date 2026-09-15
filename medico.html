@@ -2652,6 +2652,7 @@ function completeNota(id){
 }
 const PENDIENTES_DIA_MEDICO = { 1:'Lau', 2:'Nati', 4:'Gas', 5:'Grace' }; // getDay(): 0=domingo,1=lunes,2=martes,3=miércoles,4=jueves,5=viernes,6=sábado
 function checkRecordatorioPendientes(){
+  if(!lastKnownServerBeds) return; // sin lectura confirmada del servidor, mejor no tocar nada todavía
   const hoy = new Date();
   const medico = PENDIENTES_DIA_MEDICO[hoy.getDay()];
   if(!medico) return;
@@ -3359,11 +3360,18 @@ async function loadState(){
   try{
     const res = await fetch(APPS_SCRIPT_URL + '?_=' + Date.now(), {cache:'no-store'});
     const data = await res.json();
+    // SALVAGUARDA: si la planilla devolvió una foto sospechosamente vacía (por un hipo pasajero
+    // de Google/la red), NO la tomamos como válida — mantenemos lo que ya teníamos (de la copia
+    // local o de la memoria) y NO marcamos esto como "lectura confirmada", para que ningún
+    // guardado posterior se base en esta foto rota.
+    const data_confiable = data.beds && Object.keys(data.beds).length >= allIds.length / 2;
+    if(!data_confiable){
+      console.error('loadState: la lectura de la planilla vino sospechosamente vacía, se ignora para no pisar lo que ya había.');
+      throw new Error('Lectura del servidor sospechosamente vacía (menos de la mitad de las camas esperadas)');
+    }
     // A partir de acá tenemos la foto REAL y actual del servidor — beds y notas se reemplazan
     // por completo con esto, nunca con una copia vieja guardada en esta computadora.
-    if(data.beds){
-      allIds.forEach(id => { beds[id] = data.beds[id] || {status:'libre'}; });
-    }
+    allIds.forEach(id => { beds[id] = data.beds[id] || {status:'libre'}; });
     if(data.historial) historial = data.historial;
     if(data.diagnosticosLog) diagnosticosLog = data.diagnosticosLog;
     if(data.notas) notas = data.notas;
@@ -3397,33 +3405,46 @@ async function loadState(){
 async function saveState(undoEgreso, completarClinico){
   if(!backendConfigured()) return;
 
+  // SALVAGUARDA CRÍTICA: si todavía no tuvimos ninguna lectura confirmada del servidor en esta
+  // sesión, jamás empujamos "beds" — podría estar vacío o desactualizado y borraría el Censo.
+  if(!lastKnownServerBeds){
+    console.error('saveState: se abortó el guardado porque todavía no hay una lectura confirmada del servidor (riesgo de vaciar el Censo).');
+    setPendingSync(true);
+    setOfflineBanner(true, new Date().toISOString(), true);
+    return;
+  }
+
   // Antes de guardar: traer la foto actual del servidor, y para cada cama que NO hayamos
   // tocado nosotros desde la última lectura, usar esa foto fresca en vez de la que tengamos
   // en memoria (que puede estar vieja si esta pestaña quedó abierta mucho tiempo). Las camas
   // que sí cambiamos localmente se respetan tal cual, para que el guardado se aplique.
-  if(lastKnownServerBeds){
-    try{
-      const resFresco = await fetch(APPS_SCRIPT_URL + '?_=' + Date.now(), {cache:'no-store'});
-      const fresco = await resFresco.json();
-      if(fresco.beds){
-        allIds.forEach(id=>{
-          const local = JSON.stringify(beds[id]);
-          const conocido = JSON.stringify(lastKnownServerBeds[id]);
-          if(local === conocido){
-            beds[id] = fresco.beds[id] || {status:'libre'};
-          }
-        });
-      }
-      if(fresco.notas && lastKnownServerNotas){
-        const idsConocidos = new Set(lastKnownServerNotas.map(n=>n.id));
-        const idsLocalesActuales = new Set(notas.map(n=>n.id));
-        const removidosLocalmente = [...idsConocidos].filter(id => !idsLocalesActuales.has(id));
-        const agregadosLocalmente = notas.filter(n => !idsConocidos.has(n.id));
-        notas = fresco.notas.filter(n => !removidosLocalmente.includes(n.id)).concat(agregadosLocalmente);
-      }
-    }catch(e){
-      console.error('No se pudo refrescar antes de guardar, se sigue con lo que había en memoria', e);
+  try{
+    const resFresco = await fetch(APPS_SCRIPT_URL + '?_=' + Date.now(), {cache:'no-store'});
+    const fresco = await resFresco.json();
+    // SALVAGUARDA: si la respuesta fresca viene sospechosamente vacía (menos de la mitad de las
+    // camas esperadas), no confiamos en ella para "actualizar" camas que no tocamos — mejor
+    // seguir con lo que había en memoria que arriesgarnos a vaciarlas por una respuesta rota.
+    const fresco_confiable = fresco.beds && Object.keys(fresco.beds).length >= allIds.length / 2;
+    if(fresco_confiable){
+      allIds.forEach(id=>{
+        const local = JSON.stringify(beds[id]);
+        const conocido = JSON.stringify(lastKnownServerBeds[id]);
+        if(local === conocido){
+          beds[id] = fresco.beds[id] || {status:'libre'};
+        }
+      });
+    } else if(fresco.beds){
+      console.error('saveState: la lectura de refresco vino sospechosamente vacía, se ignora y se sigue con lo que había en memoria.');
     }
+    if(fresco.notas && lastKnownServerNotas){
+      const idsConocidos = new Set(lastKnownServerNotas.map(n=>n.id));
+      const idsLocalesActuales = new Set(notas.map(n=>n.id));
+      const removidosLocalmente = [...idsConocidos].filter(id => !idsLocalesActuales.has(id));
+      const agregadosLocalmente = notas.filter(n => !idsConocidos.has(n.id));
+      notas = fresco.notas.filter(n => !removidosLocalmente.includes(n.id)).concat(agregadosLocalmente);
+    }
+  }catch(e){
+    console.error('No se pudo refrescar antes de guardar, se sigue con lo que había en memoria', e);
   }
 
   // Censo/Notas/Meta viajan completos (son chicos y de tamaño fijo/acotado).
