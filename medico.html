@@ -3405,10 +3405,26 @@ async function loadState(){
 async function saveState(undoEgreso, completarClinico){
   if(!backendConfigured()) return;
 
-  // SALVAGUARDA CRÍTICA: si todavía no tuvimos ninguna lectura confirmada del servidor en esta
-  // sesión, jamás empujamos "beds" — podría estar vacío o desactualizado y borraría el Censo.
+  // Si todavía no tenemos una foto confirmada del servidor en esta sesión (puede pasar si se
+  // actuó muy rápido, justo al abrir la página, antes de que terminara la primera lectura),
+  // la conseguimos recién ahora — así el guardado real no se pierde.
   if(!lastKnownServerBeds){
-    console.error('saveState: se abortó el guardado porque todavía no hay una lectura confirmada del servidor (riesgo de vaciar el Censo).');
+    try{
+      const res0 = await fetch(APPS_SCRIPT_URL + '?_=' + Date.now(), {cache:'no-store'});
+      const data0 = await res0.json();
+      const data0_confiable = data0.beds && Object.keys(data0.beds).length >= allIds.length / 2;
+      if(data0_confiable) lastKnownServerBeds = data0.beds;
+    }catch(e){
+      console.error('No se pudo confirmar el estado del servidor antes de guardar', e);
+    }
+  }
+
+  // Si de verdad no se pudo establecer una base confiable (servidor caído o sin responder),
+  // no arriesgamos el Censo con un guardado a ciegas — guardamos localmente lo que había
+  // (para no perderlo) y queda pendiente de reintentar en la próxima carga exitosa.
+  if(!lastKnownServerBeds){
+    console.error('saveState: no se pudo confirmar el estado del servidor, se guarda localmente y se reintenta más tarde.');
+    saveLocalCache({beds, historial, diagnosticosLog, notas, conflictivos, desenlacesUTI, pendingHistorialAppends, pendingDiagnosticosAppends, pendingDesenlaceUTIAppends});
     setPendingSync(true);
     setOfflineBanner(true, new Date().toISOString(), true);
     return;
