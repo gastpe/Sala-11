@@ -1,0 +1,786 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sala 11 — Vista Enfermería</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg: #F4F6F7; --panel: #FFFFFF; --ink: #16212B; --ink-soft: #55636F; --line: #D9E0E4;
+    --teal: #0B5E59; --teal-dark: #073E3B;
+    --libre-bg: #EAF3EC; --libre-bd: #2E7D5B; --libre-tx: #1E5A3C;
+    --ocup-bg: #E8F0FA;  --ocup-bd: #2563AF;  --ocup-tx: #1B4C86;
+    --aisl-bg: #FDF3DC;  --aisl-bd: #B9821D;  --aisl-tx: #8A611A;
+    --rot-bg: #FBE8E6;   --rot-bd: #C0392B;   --rot-tx: #9A2E22;
+    --resp-bg: #EFE9F7;  --resp-bd: #6E4FA0;  --resp-tx: #543C7B;
+    --bedvacia-bg: #EEF0F2; --bedvacia-bd: #9AA5AD; --bedvacia-tx: #5B6570;
+    --bedocup-bg:  #E5F3EA; --bedocup-bd:  #1E8A4C; --bedocup-tx:  #145C33;
+  }
+  *{box-sizing:border-box;}
+  h1, h2, h3, h4, .pizarra-title, .zone-label, .nurse, .legend-title{ text-transform:uppercase; }
+  body{ margin:0; background:var(--bg); color:var(--ink); font-family:'Public Sans', system-ui, sans-serif; -webkit-font-smoothing:antialiased; }
+  .wrap{ max-width:1000px; margin:0 auto; padding:26px 20px 50px; }
+  header{ margin-bottom:20px; }
+  .title-block h1{ margin:0; font-size:34px; font-weight:900; color:var(--teal-dark); }
+  .title-block .sub{ margin:4px 0 0; color:var(--ink-soft); font-size:14px; }
+  .date-chip{ display:inline-flex; align-items:center; gap:8px; margin-top:10px; background:var(--teal); color:#fff; border-radius:999px; padding:9px 18px; font-size:15px; font-weight:700; text-transform:capitalize; }
+  .stats{ display:flex; gap:10px; flex-wrap:wrap; margin-top:14px; }
+  .stat{ background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:10px 16px; min-width:92px; text-align:center; }
+  .stat .n{ font-size:22px; font-weight:800; line-height:1; }
+  .stat .l{ font-size:11.5px; color:var(--ink-soft); margin-top:4px; }
+  .stat.ocup .n{ color:var(--ocup-bd); }
+  .stat.nodisp .n{ color:var(--rot-bd); }
+  .stat.libre .n{ color:var(--libre-bd); }
+
+  .review-banner{
+    display:flex; align-items:center; justify-content:space-between; gap:14px; flex-wrap:wrap;
+    background:#FBE8E6; border:1.5px solid var(--rot-bd); color:var(--rot-tx);
+    border-radius:12px; padding:12px 16px; margin-bottom:16px; font-size:13.5px; font-weight:600;
+  }
+
+  .legend{ display:flex; gap:16px; flex-wrap:wrap; margin:0 0 18px; font-size:13px; color:var(--ink-soft); }
+  .legend span{ display:inline-flex; align-items:center; gap:6px; }
+  .dot{ width:12px; height:12px; border-radius:3px; display:inline-block; }
+
+  .room{ background:var(--panel); border:1px solid var(--line); border-radius:16px; padding:24px 24px 28px; }
+  .isolation-row{ border:1px dashed var(--resp-bd); border-radius:12px; padding:16px; margin-bottom:20px; background:#FBF9FE; }
+  .isolation-row h3{ margin:0 0 12px; font-size:13px; font-weight:700; color:var(--resp-tx); }
+  .isolation-beds{ display:grid; grid-template-columns:repeat(4,1fr); gap:12px; }
+
+  .wings{ display:grid; grid-template-columns:1fr 70px 1fr; }
+  .wing{ display:flex; flex-direction:column; gap:10px; }
+  .corridor{ display:flex; align-items:center; justify-content:center; writing-mode:vertical-rl; color:var(--ink-soft); font-size:12px; font-weight:600; letter-spacing:.08em; border-left:1px dashed var(--line); border-right:1px dashed var(--line); }
+  .row2{ display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+  .zone-label{ font-size:11px; color:var(--ink-soft); text-align:center; padding:4px 0; border-top:1px solid var(--line); border-bottom:1px solid var(--line); margin:2px 0; }
+  .nurse{ font-size:12px; font-weight:700; color:var(--teal-dark); text-align:center; padding:10px; border:1px dashed var(--line); border-radius:10px; }
+
+  .bed{
+    border-radius:12px; border:1.5px solid var(--line); padding:10px 8px; text-align:center;
+    cursor:pointer; transition:transform .1s ease, box-shadow .1s ease; user-select:none;
+    display:flex; flex-direction:column; align-items:center; gap:4px; height:172px; justify-content:center;
+  }
+  .bed:hover{ transform:translateY(-2px); box-shadow:0 4px 10px rgba(0,0,0,.08); }
+  .bed .icon{ font-size:21.2px; line-height:1; }
+  .bed .num{ font-weight:800; font-size:15.3px; }
+  .bed .name{ font-size:16.5px; font-weight:800; max-width:100%; line-height:1.2; word-break:break-word; }
+  .bed .dni{ font-size:14.2px; font-weight:600; opacity:.85; }
+  .bed .sub{ font-size:13px; font-weight:700; }
+  .bed .medico-chip{ font-size:12px; font-weight:800; color:#fff; padding:2px 9px; border-radius:9px; }
+  .bed{ position:relative; }
+  .bed .os-badge{
+    position:absolute; top:-9px; right:-9px; font-size:19px; line-height:1;
+    background:#fff; border:2px solid #1E8A4C; border-radius:50%;
+    width:34px; height:34px; display:flex; align-items:center; justify-content:center;
+    box-shadow:0 2px 5px rgba(0,0,0,.25); z-index:2;
+  }
+
+  .bed.libre{ background:var(--bedvacia-bg); border-color:var(--bedvacia-bd); color:var(--bedvacia-tx); }
+  .bed.ocupada{ background:var(--bedocup-bg); border-color:var(--bedocup-bd); color:var(--bedocup-tx); }
+  .bed.bloq_aislamiento{ background:var(--aisl-bg); border-color:var(--aisl-bd); color:var(--aisl-tx); }
+  .bed.bloq_rotura, .bed.bloq_arreglo{ background:var(--rot-bg); border-color:var(--rot-bd); color:var(--rot-tx); }
+  .bed.isolation-bed{ background:var(--bedvacia-bg); border-color:var(--bedvacia-bd); color:var(--bedvacia-tx); }
+  .bed.isolation-bed.libre{ background:var(--bedvacia-bg); border-color:var(--bedvacia-bd); color:var(--bedvacia-tx); }
+
+  .overlay{ position:fixed; inset:0; background:rgba(16,25,32,.45); backdrop-filter:blur(4px); -webkit-backdrop-filter:blur(4px); display:none; align-items:center; justify-content:center; padding:20px; z-index:50; }
+  .overlay.show{ display:flex; }
+  .modal{ background:#fff; border-radius:14px; padding:24px; width:100%; max-width:420px; max-height:88vh; overflow:auto; position:relative; }
+  .modal h2{ margin:0 0 4px; font-size:19px; color:var(--teal-dark); }
+  .modal .sub-h{ margin:0 0 16px; font-size:13px; color:var(--ink-soft); }
+  .field{ margin-bottom:13px; }
+  .field label{ display:block; font-size:12.5px; font-weight:700; color:var(--ink-soft); margin-bottom:5px; }
+  .field input, .field select, .field textarea{
+    width:100%; padding:9px 10px; border:1px solid var(--line); border-radius:8px; font-family:inherit; font-size:14.5px; color:var(--ink);
+  }
+  .close-x{ position:absolute; top:10px; right:10px; background:#EDEFF0; border:none; width:34px; height:34px; border-radius:50%; font-size:20px; font-weight:800; cursor:pointer; color:var(--ink); display:flex; align-items:center; justify-content:center; line-height:1; z-index:10; transition:background .15s; }
+  .close-x:hover{ background:#DCE0E2; }
+  .btn{
+    background:var(--teal); color:#fff; border:none; border-radius:10px; padding:11px 18px;
+    font-size:14.5px; font-weight:700; cursor:pointer; font-family:inherit; width:100%; margin-bottom:8px;
+  }
+  .btn:hover{ background:var(--teal-dark); }
+  .btn.ghost{ background:transparent; color:var(--teal); border:1.5px solid var(--teal); }
+  .btn.warn{ background:var(--rot-bd); }
+  .alert-box{ background:#FDF3DC; border:1px solid var(--aisl-bd); color:var(--aisl-tx); border-radius:8px; padding:10px 12px; font-size:13px; margin-bottom:14px; }
+  .modal-actions{ display:flex; justify-content:space-between; gap:8px; }
+  #printSheet table td{ padding:7px 5px; border-bottom:1px solid var(--line); }
+  #printSheet table td:last-child{ text-align:right; font-weight:700; }
+  #printSheet table tr.subrow td{ border-bottom:none; padding:2px 5px 2px 16px; font-weight:400; color:var(--ink-soft); font-size:13.8px; }
+  #printSheet table tr.subrow td:last-child{ font-weight:600; }
+  @media print{
+    @page{ size:A4; margin:8mm; }
+  }
+  body.print-mode > *:not(.overlay){ display:none !important; }
+  body.print-mode .overlay:not(.show){ display:none !important; }
+  body.print-mode .overlay.show{
+    position:static !important; inset:auto !important; background:none !important;
+    backdrop-filter:none !important; padding:0 !important; display:block !important; margin:0 !important;
+  }
+  body.print-mode .overlay.show > *:not(.modal){ display:none !important; }
+  body.print-mode .modal{
+    box-shadow:none !important; max-height:none !important; overflow:visible !important;
+    padding:0 !important; margin:0 !important; width:100% !important; max-width:100% !important; border-radius:0 !important;
+  }
+  body.print-mode .modal > *:not(.print-area){ display:none !important; }
+  body.print-mode .print-area{ display:block !important; width:100%; }
+  body.print-mode .print-area *{ -webkit-print-color-adjust:exact !important; print-color-adjust:exact !important; color-adjust:exact !important; }
+  body.print-mode .print-page-break{ page-break-before:always; break-before:page; }
+  body.print-mode .wings, body.print-mode .isolation-row{ page-break-inside:avoid; break-inside:avoid; }
+  body.print-mode .bed{ height:105px !important; padding:5px 4px !important; gap:3px !important; border-radius:6px !important; }
+  body.print-mode .bed .icon{ font-size:15px !important; }
+  body.print-mode .bed .num{ font-size:11.5px !important; }
+  body.print-mode .bed .num-ocupada{ font-size:13px !important; padding:1.5px 7px !important; }
+  body.print-mode .bed .name{ font-size:10.5px !important; }
+  body.print-mode .bed .dni{ font-size:9.3px !important; }
+  body.print-mode .bed .sub{ font-size:9.3px !important; }
+  body.print-mode .bed .medico-chip{ font-size:9.3px !important; padding:1.5px 6px !important; }
+  body.print-mode .isolation-beds{ gap:5px !important; }
+  body.print-mode .row2{ gap:5px !important; }
+  body.print-mode .wing{ gap:5px !important; }
+  body.print-mode .isolation-row{ padding:6px !important; margin-bottom:8px !important; }
+  body.print-mode .isolation-row h3{ font-size:10px !important; margin-bottom:5px !important; }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <header>
+    <div class="title-block">
+      <h1>Sala 11 — Vista Enfermería</h1>
+      <p class="sub">Ingresos, movimientos y bloqueos de camas. Las altas médicas y los datos clínicos los cargan los médicos.</p>
+      <div class="date-chip">📅 <span id="todayLabel"></span></div>
+      <div class="stats">
+        <div class="stat ocup"><div class="n" id="stOcup">0</div><div class="l">Ocupadas</div></div>
+        <div class="stat nodisp"><div class="n" id="stNodisp">0</div><div class="l">No disponibles</div></div>
+        <div class="stat libre"><div class="n" id="stLibre">0</div><div class="l">Disponibles</div></div>
+        <div class="stat"><div class="n">20</div><div class="l">Dotación</div></div>
+      </div>
+      <button class="btn ghost" style="width:auto; margin-top:14px;" onclick="openParte()">🖨️ Imprimir mapa y ocupación</button>
+    </div>
+  </header>
+
+  <div class="review-banner" id="offlineBanner" style="display:none;">
+    <span id="offlineBannerText"></span>
+    <button class="btn" style="width:auto;" onclick="manualSync()">Sincronizar ahora</button>
+  </div>
+
+  <div class="legend">
+    <span><span class="dot" style="background:var(--bedvacia-bd)"></span>🛏️ Libre</span>
+    <span><span class="dot" style="background:var(--bedocup-bd)"></span>🤒 Ocupada</span>
+    <span><span class="dot" style="background:var(--aisl-bd)"></span>⛔ Bloqueada (aislamiento)</span>
+    <span><span class="dot" style="background:var(--rot-bd)"></span>🛠️ Bloqueada (rotura/arreglo)</span>
+  </div>
+
+  <div class="room">
+    <div class="isolation-row">
+      <h3>Aislamiento respiratorio (camas fijas)</h3>
+      <div class="isolation-beds" id="isolationBeds"></div>
+    </div>
+    <div class="wings">
+      <div class="wing" id="wingLeft"></div>
+      <div class="corridor">PASILLO</div>
+      <div class="wing" id="wingRight"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal parte de camas -->
+<div class="overlay" id="parteOverlay">
+  <div class="modal" style="max-width:820px;">
+    <div class="print-area" id="printSheet">
+      <h2>Mapa y ocupación de camas — Sala 11</h2>
+      <p class="sub-h" id="parteFecha"></p>
+      <table style="width:100%; border-collapse:collapse; font-size:16.5px; margin-bottom:20px; max-width:420px;">
+        <tbody id="parteTablaBody"></tbody>
+      </table>
+      <h3 class="print-page-break" style="font-size:15.5px; margin-bottom:10px;">Mapa de camas</h3>
+      <div class="isolation-row" style="margin-bottom:16px; page-break-inside:avoid;">
+        <h3>Aislamiento respiratorio (camas fijas)</h3>
+        <div class="isolation-beds" id="printIsolationBeds"></div>
+      </div>
+      <div class="wings">
+        <div class="wing left" id="printWingLeft"></div>
+        <div class="zone-label" style="align-self:center; text-align:center;">PASILLO</div>
+        <div class="wing right" id="printWingRight"></div>
+      </div>
+    </div>
+    <div class="modal-actions" style="margin-top:18px;">
+      <button class="btn ghost" onclick="closeParte()">Volver</button>
+      <button class="btn" onclick="imprimirAhora()">Imprimir</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal cama -->
+<div class="overlay" id="bedOverlay">
+  <div class="modal">
+    <button class="close-x" onclick="closeModal()">✕</button>
+    <h2 id="modalTitle">Cama</h2>
+    <p class="sub-h" id="modalSub"></p>
+    <div id="modalFields"></div>
+  </div>
+</div>
+
+<script>
+/* ---------- Datos de la sala (mismo layout que la herramienta principal) ---------- */
+const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyl3Y89ioZ5Jxe31Mr9Yyjhg6aP-8DHY3Nzm9g4Y9IiRBa_z2LF5nz9lEXf1Yq_TrKM/exec';
+
+const DOCTOR_COLORS = { 'Lau':'#0B5E59', 'Grace':'#2563AF', 'Nati':'#B9821D', 'Gas':'#6E4FA0' };
+const NEIGHBORS = { '1':'2','2':'1','3':'4','4':'3','5':'6','6':'5','7':'8','8':'7','9A':'9B','9B':'9A','14A':'14B','14B':'14A','15':'16','16':'15','17':'18','18':'17' };
+const BATH_PAIRS = { '11':'12', '12':'11' };
+const isolationBeds = [
+  {id:'10', bath:'propio'}, {id:'11', bath:'compartido con 12'},
+  {id:'12', bath:'compartido con 11'}, {id:'13', bath:'propio'}
+];
+const leftWing  = [['9B','9A'], ['8','7'], 'zone:Área sucia', ['6','5'], ['4','3'], ['2','1']];
+const rightWing = [['14A','14B'], ['15','16'], 'zone:Área limpia', ['17','18']];
+let allIds = [...isolationBeds.map(b=>b.id), ...Object.keys(NEIGHBORS)];
+
+let beds = {};
+allIds.forEach(id => beds[id] = {status:'libre'});
+let currentBed = null;
+
+/* ---------- Render del mapa ---------- */
+function bedIcon(b){
+  if(b.status==='libre') return '🛏️';
+  if(b.status==='ocupada') return '🤒';
+  if(b.status==='bloqueada'){
+    if(b.block.motivo==='aislamiento') return '⛔';
+    return '🛠️';
+  }
+  return '';
+}
+function bedClass(id,b){
+  const isIso = isolationBeds.some(x=>x.id===id);
+  if(b.status==='libre') return isIso ? 'bed isolation-bed libre' : 'bed libre';
+  if(b.status==='ocupada') return 'bed ocupada';
+  if(b.status==='bloqueada') return b.block.motivo==='aislamiento' ? 'bed bloq_aislamiento' : 'bed bloq_'+b.block.motivo;
+  return 'bed';
+}
+function renderBed(id){
+  const b = beds[id];
+  const isIso = isolationBeds.some(x=>x.id===id);
+  const icon = bedIcon(b);
+  let extra = '';
+  let osBadge = '';
+  if(b.status==='ocupada'){
+    if(b.patient.obraSocial) osBadge = '<span class="os-badge" title="Tiene obra social">💲</span>';
+    extra = `<div class="name">${b.patient.nombre||''}</div><div class="dni">DNI ${b.patient.dni||'—'}</div>`;
+    if(b.patient.medico){
+      const color = DOCTOR_COLORS[b.patient.medico] || '#666';
+      extra += `<div class="medico-chip" style="background:${color};">${b.patient.medico}</div>`;
+    }
+    if(b.patient.aislamiento && b.patient.aislamiento!=='ninguno'){
+      extra += `<div class="sub">${b.patient.aislamiento}</div>`;
+    }
+  } else if(b.status==='bloqueada'){
+    const label = b.block.motivo==='aislamiento' ? (b.block.aislamientoTipo||'aislamiento') : (b.block.motivo==='rotura'?'rotura':'arreglo');
+    extra = `<div class="sub">${label}</div>`;
+  }
+  return `<div class="${bedClass(id,b)}" onclick="openBed('${id}')">
+    ${osBadge}
+    <div class="icon">${icon}</div>
+    <div class="num">${id}</div>
+    ${extra}
+  </div>`;
+}
+function renderAll(){
+  document.getElementById('isolationBeds').innerHTML = isolationBeds.map(b=>renderBed(b.id)).join('');
+  document.getElementById('wingLeft').innerHTML = leftWing.map(row=>{
+    if(typeof row==='string') return `<div class="zone-label">${row.split(':')[1]}</div>`;
+    return `<div class="row2">${row.map(renderBed).join('')}</div>`;
+  }).join('');
+  document.getElementById('wingRight').innerHTML = rightWing.map((row,i)=>{
+    if(typeof row==='string') return `<div class="zone-label">${row.split(':')[1]}</div>`;
+    let html = `<div class="row2">${row.map(renderBed).join('')}</div>`;
+    if(i===rightWing.length-1) html += `<div class="nurse">ENFERMERÍA →</div>`;
+    return html;
+  }).join('');
+  updateStats();
+}
+function openParte(){
+  let ocup=0, nodisp=0;
+  const grupos = {};
+  allIds.forEach(id=>{
+    const b = beds[id];
+    if(b.status==='ocupada') ocup++;
+    if(b.status==='bloqueada'){
+      nodisp++;
+      let label;
+      if(b.block.motivo==='aislamiento') label = b.block.aislamientoTipo || 'Aislamiento';
+      else if(b.block.motivo==='rotura') label = 'Rotura';
+      else label = 'Arreglo/mantenimiento';
+      grupos[label] = (grupos[label]||0)+1;
+    }
+  });
+  const fecha = new Date().toLocaleDateString('es-AR');
+  document.getElementById('parteFecha').textContent = fecha;
+  const subrows = Object.entries(grupos).map(([label,count])=>
+    `<tr class="subrow"><td>No disponible por ${label}</td><td>${count}</td></tr>`
+  ).join('');
+  document.getElementById('parteTablaBody').innerHTML = `
+    <tr><td>N° de sala</td><td>11</td></tr>
+    <tr><td>Fecha</td><td>${fecha}</td></tr>
+    <tr><td>Dotación total de camas</td><td>20</td></tr>
+    <tr><td>Camas ocupadas</td><td>${ocup}</td></tr>
+    <tr><td>Camas no disponibles</td><td>${nodisp}</td></tr>
+    ${subrows}
+    <tr><td>Camas disponibles</td><td>${20-ocup-nodisp}</td></tr>
+  `;
+  // Clonar el mapa tal cual se ve en pantalla, no una lista aparte
+  document.getElementById('printIsolationBeds').innerHTML = document.getElementById('isolationBeds').innerHTML;
+  document.getElementById('printWingLeft').innerHTML = document.getElementById('wingLeft').innerHTML;
+  document.getElementById('printWingRight').innerHTML = document.getElementById('wingRight').innerHTML;
+  document.getElementById('parteOverlay').classList.add('show');
+}
+function closeParte(){ document.getElementById('parteOverlay').classList.remove('show'); }
+function imprimirAhora(){
+  document.body.classList.add('print-mode');
+  window.print();
+}
+window.addEventListener('afterprint', ()=> document.body.classList.remove('print-mode'));
+
+function updateStats(){
+  let ocup=0, nodisp=0;
+  Object.values(beds).forEach(b=>{
+    if(b.status==='ocupada') ocup++;
+    if(b.status==='bloqueada') nodisp++;
+  });
+  document.getElementById('stOcup').textContent = ocup;
+  document.getElementById('stNodisp').textContent = nodisp;
+  document.getElementById('stLibre').textContent = 20-ocup-nodisp;
+}
+
+/* ---------- Fechas ---------- */
+function esArToISO(str){
+  if(!str) return new Date().toISOString().slice(0,10);
+  const parts = str.split('/');
+  if(parts.length!==3) return new Date().toISOString().slice(0,10);
+  const [d,m,y] = parts;
+  return y+'-'+m.padStart(2,'0')+'-'+d.padStart(2,'0');
+}
+function isoToEsAr(iso){ const [y,m,d] = iso.split('-'); return d+'/'+m+'/'+y; }
+function parseEsAr(str){
+  if(!str) return null;
+  const parts = String(str).split('/');
+  if(parts.length!==3) return null;
+  const [d,m,y] = parts.map(Number);
+  if(!d||!m||!y) return null;
+  return new Date(y, m-1, d);
+}
+
+/* ---------- Modal principal: acciones según estado ---------- */
+function openBed(id){
+  currentBed = id;
+  const b = beds[id];
+  const isIso = isolationBeds.some(x=>x.id===id);
+  document.getElementById('modalTitle').textContent = 'Cama '+id;
+  const f = document.getElementById('modalFields');
+
+  if(b.status==='libre'){
+    document.getElementById('modalSub').textContent = isIso ? 'Aislamiento respiratorio fijo · libre' : 'Cama libre';
+    f.innerHTML = `
+      <button type="button" class="btn" onclick="startIngreso()">🧍 Ingresar paciente</button>
+      <button type="button" class="btn ghost" onclick="startBloqueo()">🔧 Bloquear cama</button>
+    `;
+  } else if(b.status==='ocupada'){
+    document.getElementById('modalSub').textContent = b.patient.nombre + ' · DNI ' + (b.patient.dni||'—');
+    f.innerHTML = `
+      <button type="button" class="btn ghost" onclick="startMove()">🔀 Mudar a otra cama</button>
+      <button type="button" class="btn ghost" onclick="startAislamiento()">🦠 Cambiar aislamiento</button>
+      <button type="button" class="btn warn" onclick="startMovimiento()">🚪 Registrar movimiento (fuga / pase / óbito)</button>
+    `;
+  } else if(b.status==='bloqueada'){
+    const label = b.block.motivo==='aislamiento' ? (b.block.aislamientoTipo||'Aislamiento') : (b.block.motivo==='rotura'?'Rotura':'Arreglo');
+    document.getElementById('modalSub').textContent = 'Bloqueada — ' + label;
+    f.innerHTML = `<button type="button" class="btn" onclick="liberarCama()">✅ Liberar cama</button>`;
+  }
+  document.getElementById('bedOverlay').classList.add('show');
+}
+function closeModal(){ document.getElementById('bedOverlay').classList.remove('show'); currentBed=null; }
+function liberarCama(){
+  beds[currentBed] = {status:'libre'};
+  renderAll(); saveState(); closeModal();
+}
+
+/* ---------- Ingresar paciente ---------- */
+function startIngreso(){
+  const id = currentBed;
+  const isIso = isolationBeds.some(x=>x.id===id);
+  const todayISO = new Date().toISOString().slice(0,10);
+  document.getElementById('modalFields').innerHTML = `
+    <div class="field"><label>Nombre y apellido</label><input id="fNombre" oninput="this.value=this.value.toUpperCase()" style="text-transform:uppercase;"></div>
+    <div class="field"><label>DNI</label><input id="fDni"></div>
+    <div class="field"><label>Procedencia</label>
+      <select id="fProcedencia">
+        <option value="Guardia">Guardia</option>
+        <option value="UTI">UTI</option>
+        <option value="Derivado de otra sala">Derivado de otra sala</option>
+      </select>
+    </div>
+    <div class="field"><label>Fecha de ingreso a la sala</label><input type="date" id="fFechaIngresoSala" value="${todayISO}"></div>
+    ${(!isIso || BATH_PAIRS[id]) ? `
+    <div class="field"><label>Aislamiento ${isIso ? '(comparte baño)' : 'de contacto'}</label>
+      <select id="fAislamiento">
+        <option value="ninguno">Ninguno</option>
+        <option value="Contacto">Contacto</option>
+        <option value="KPC/MBL/OXA">KPC/MBL/OXA</option>
+        <option value="Clostridium">Clostridium</option>
+        <option value="Neutropénico">Neutropénico</option>
+      </select>
+    </div>` : ''}
+    <button type="button" class="btn" onclick="confirmIngreso()">Guardar ingreso</button>
+    <button type="button" class="btn ghost" onclick="openBed(currentBed)">Cancelar</button>
+  `;
+}
+function tryLinkBlock(id, partnerId, aislamiento, reasonLabel){
+  const partner = beds[partnerId];
+  if(partner.status==='ocupada'){
+    alert('⚠️ La cama '+reasonLabel+' ('+partnerId+') está ocupada por '+partner.patient.nombre+'. Avisá a los médicos para que decidan si mover al paciente.');
+  } else if(partner.status==='libre'){
+    const doLink = confirm('¿Bloquear también la cama '+reasonLabel+' ('+partnerId+') por aislamiento de '+aislamiento+'?');
+    if(doLink){
+      beds[partnerId] = { status:'bloqueada', block:{ motivo:'aislamiento', aislamientoTipo: aislamiento, linkedTo:id } };
+    }
+  }
+}
+function confirmIngreso(){
+  const id = currentBed;
+  const isIso = isolationBeds.some(x=>x.id===id);
+  const nombre = document.getElementById('fNombre').value.trim();
+  const dni = document.getElementById('fDni').value.trim();
+  if(!nombre || !dni){ alert('Cargá al menos el nombre y el DNI.'); return; }
+  const procedencia = document.getElementById('fProcedencia').value;
+  const fIS = document.getElementById('fFechaIngresoSala').value;
+  const aislamiento = (!isIso || BATH_PAIRS[id]) ? document.getElementById('fAislamiento').value : 'ninguno';
+
+  beds[id] = { status:'ocupada', patient:{
+    nombre, dni, procedencia, aislamiento,
+    fechaIngresoHospital: '',
+    fechaIngresoSala: fIS ? isoToEsAr(fIS) : new Date().toLocaleDateString('es-AR')
+  }};
+
+  if(aislamiento!=='ninguno'){
+    if(!isIso && NEIGHBORS[id]) tryLinkBlock(id, NEIGHBORS[id], aislamiento, 'contigua');
+    if(isIso && BATH_PAIRS[id]) tryLinkBlock(id, BATH_PAIRS[id], aislamiento, 'que comparte baño');
+  }
+  renderAll(); saveState(); closeModal();
+}
+
+/* ---------- Bloquear cama ---------- */
+function startBloqueo(){
+  document.getElementById('modalFields').innerHTML = `
+    <div class="field"><label>Motivo</label>
+      <select id="fMotivo" onchange="renderBloqueoSub()">
+        <option value="aislamiento">Reservada por aislamiento</option>
+        <option value="rotura">Rotura</option>
+        <option value="arreglo">Arreglo / mantenimiento</option>
+      </select>
+    </div>
+    <div id="fMotivoSub"></div>
+    <button type="button" class="btn" onclick="confirmBloqueo()">Guardar bloqueo</button>
+    <button type="button" class="btn ghost" onclick="openBed(currentBed)">Cancelar</button>
+  `;
+  renderBloqueoSub();
+}
+function renderBloqueoSub(){
+  const motivo = document.getElementById('fMotivo').value;
+  const sub = document.getElementById('fMotivoSub');
+  if(motivo==='aislamiento'){
+    sub.innerHTML = `<div class="field"><label>Tipo de aislamiento</label>
+      <select id="fAislamientoTipo">
+        <option value="Contacto">Contacto</option>
+        <option value="KPC/MBL/OXA">KPC/MBL/OXA</option>
+        <option value="Clostridium">Clostridium</option>
+        <option value="Neutropénico">Neutropénico</option>
+        <option value="Respiratorio">Respiratorio</option>
+      </select></div>`;
+  } else {
+    sub.innerHTML = `<div class="field"><label>Detalle</label><input id="fDetalle" placeholder="Ej: colchón roto"></div>`;
+  }
+}
+function confirmBloqueo(){
+  const id = currentBed;
+  const motivo = document.getElementById('fMotivo').value;
+  if(motivo==='aislamiento'){
+    beds[id] = { status:'bloqueada', block:{ motivo, aislamientoTipo: document.getElementById('fAislamientoTipo').value } };
+  } else {
+    beds[id] = { status:'bloqueada', block:{ motivo, detalle: document.getElementById('fDetalle').value.trim() } };
+  }
+  renderAll(); saveState(); closeModal();
+}
+
+/* ---------- Mudar de cama ---------- */
+function startMove(){
+  const destOptions = Object.keys(beds).filter(bid => beds[bid].status==='libre');
+  if(!destOptions.length){
+    document.getElementById('modalFields').innerHTML = '<p style="color:var(--rot-bd); font-weight:700;">No hay camas libres disponibles ahora mismo.</p><button type="button" class="btn ghost" onclick="openBed(currentBed)">Volver</button>';
+    return;
+  }
+  document.getElementById('modalFields').innerHTML = `
+    <div class="field"><label>Mudar a la cama</label>
+      <select id="fDestino">${destOptions.map(bid=>`<option value="${bid}">${bid}</option>`).join('')}</select>
+    </div>
+    <button type="button" class="btn" onclick="confirmMove()">Confirmar mudanza</button>
+    <button type="button" class="btn ghost" onclick="openBed(currentBed)">Cancelar</button>
+  `;
+}
+function unlinkFrom(id){
+  Object.keys(beds).forEach(bid=>{
+    const b = beds[bid];
+    if(b.status==='bloqueada' && b.block && b.block.linkedTo===id){
+      beds[bid] = {status:'libre'};
+    }
+  });
+}
+function confirmMove(){
+  const destId = document.getElementById('fDestino').value;
+  const srcId = currentBed;
+  const patient = JSON.parse(JSON.stringify(beds[srcId].patient));
+  unlinkFrom(srcId);
+  beds[srcId] = {status:'libre'};
+  beds[destId] = {status:'ocupada', patient};
+  const destIsIso = isolationBeds.some(x=>x.id===destId);
+  if(patient.aislamiento && patient.aislamiento!=='ninguno'){
+    if(!destIsIso && NEIGHBORS[destId]) tryLinkBlock(destId, NEIGHBORS[destId], patient.aislamiento, 'contigua');
+    if(destIsIso && BATH_PAIRS[destId]) tryLinkBlock(destId, BATH_PAIRS[destId], patient.aislamiento, 'que comparte baño');
+  }
+  renderAll(); saveState(); closeModal();
+  alert('Paciente mudado de la cama '+srcId+' a la cama '+destId+'.');
+}
+
+/* ---------- Cambiar aislamiento de un paciente ya internado ---------- */
+function startAislamiento(){
+  const id = currentBed;
+  const isIso = isolationBeds.some(x=>x.id===id);
+  if(isIso && !BATH_PAIRS[id]){
+    document.getElementById('modalFields').innerHTML = '<p style="color:var(--ink-soft); font-size:14px;">Esta cama de aislamiento respiratorio no necesita marcarse aparte.</p><button type="button" class="btn ghost" onclick="openBed(currentBed)">Volver</button>';
+    return;
+  }
+  const current = beds[id].patient.aislamiento || 'ninguno';
+  document.getElementById('modalFields').innerHTML = `
+    <div class="field"><label>Aislamiento ${isIso ? '(comparte baño)' : 'de contacto'}</label>
+      <select id="fAislamientoCambio">
+        <option value="ninguno" ${current==='ninguno'?'selected':''}>Ninguno</option>
+        <option value="Contacto" ${current==='Contacto'?'selected':''}>Contacto</option>
+        <option value="KPC/MBL/OXA" ${current==='KPC/MBL/OXA'?'selected':''}>KPC/MBL/OXA</option>
+        <option value="Clostridium" ${current==='Clostridium'?'selected':''}>Clostridium</option>
+        <option value="Neutropénico" ${current==='Neutropénico'?'selected':''}>Neutropénico</option>
+      </select>
+    </div>
+    <button type="button" class="btn" onclick="confirmAislamiento()">Guardar</button>
+    <button type="button" class="btn ghost" onclick="openBed(currentBed)">Cancelar</button>
+  `;
+}
+function confirmAislamiento(){
+  const id = currentBed;
+  const isIso = isolationBeds.some(x=>x.id===id);
+  const nuevo = document.getElementById('fAislamientoCambio').value;
+  const anterior = beds[id].patient.aislamiento || 'ninguno';
+  beds[id].patient.aislamiento = nuevo;
+
+  if(anterior!=='ninguno' && nuevo==='ninguno'){
+    unlinkFrom(id);
+  }
+  if(nuevo!=='ninguno' && nuevo!==anterior){
+    if(!isIso && NEIGHBORS[id]) tryLinkBlock(id, NEIGHBORS[id], nuevo, 'contigua');
+    if(isIso && BATH_PAIRS[id]) tryLinkBlock(id, BATH_PAIRS[id], nuevo, 'que comparte baño');
+  }
+  renderAll(); saveState(); closeModal();
+}
+
+/* ---------- Registrar movimiento (fuga / pase / óbito — nunca alta médica) ---------- */
+function startMovimiento(){
+  const todayISO = new Date().toISOString().slice(0,10);
+  document.getElementById('modalFields').innerHTML = `
+    <div class="alert-box">La alta médica la registran los médicos. Acá solo se cargan fugas, pases o fallecimientos.</div>
+    <div class="field"><label>Motivo</label>
+      <select id="fMotivoMov">
+        <option value="Fuga / contra opinión médica">Fuga / contra opinión médica</option>
+        <option value="Pase a otra sala">Pase a otra sala</option>
+        <option value="Pase a UTI">Pase a UTI</option>
+        <option value="Derivación a otro centro">Derivación a otro centro</option>
+        <option value="Óbito">Óbito</option>
+      </select>
+    </div>
+    <div class="field"><label>Fecha</label><input type="date" id="fFechaMov" value="${todayISO}"></div>
+    <button type="button" class="btn warn" onclick="confirmMovimiento()">Confirmar</button>
+    <button type="button" class="btn ghost" onclick="openBed(currentBed)">Cancelar</button>
+  `;
+}
+function confirmMovimiento(){
+  const id = currentBed;
+  const patient = beds[id].patient;
+  const motivo = document.getElementById('fMotivoMov').value;
+  const fechaISO = document.getElementById('fFechaMov').value;
+  const fecha = fechaISO ? isoToEsAr(fechaISO) : new Date().toLocaleDateString('es-AR');
+
+  const entry = {
+    dni: patient.dni, nombre: patient.nombre, cama: id, medico: '', obraSocial: 'No', procedencia: patient.procedencia || '',
+    ingresoHospital: patient.fechaIngresoHospital || '(sin fecha)',
+    ingresoSala: patient.fechaIngresoSala || '(sin fecha)',
+    diagnosticoVIH: '', cd4: '', cv: '', coinfecciones: '', tarv: '', tarvDesde: '', tbcPrevia: '',
+    comorbilidades: '', infeccionesIH: '', motivoInternacion: '',
+    evolucion: 'Movimiento registrado por Enfermería.',
+    egreso: fecha, motivoEgreso: motivo, noEvaluado: 'No'
+  };
+  pendingHistorialAppends.push(entry);
+
+  unlinkFrom(id);
+  beds[id] = {status:'libre'};
+  renderAll(); saveState(); closeModal();
+}
+
+/* ---------- Persistencia (misma planilla que la herramienta principal) ---------- */
+const CACHE_KEY = 'sala11_enf_cache_v1';
+const PENDING_KEY = 'sala11_enf_pending_sync';
+let pendingHistorialAppends = [];
+
+function saveLocalCache(payload){
+  try{ localStorage.setItem(CACHE_KEY, JSON.stringify({ data: payload, savedAt: new Date().toISOString() })); }
+  catch(e){ console.error('No se pudo guardar la copia local', e); }
+}
+function loadLocalCache(){
+  try{ const raw = localStorage.getItem(CACHE_KEY); return raw ? JSON.parse(raw) : null; }
+  catch(e){ return null; }
+}
+function setPendingSync(p){ try{ localStorage.setItem(PENDING_KEY, p?'1':'0'); }catch(e){} }
+function hasPendingSync(){ try{ return localStorage.getItem(PENDING_KEY)==='1'; }catch(e){ return false; } }
+function setOfflineBanner(active, since, pendingWrite){
+  const banner = document.getElementById('offlineBanner');
+  const btn = banner.querySelector('button');
+  if(!active){ banner.style.display='none'; return; }
+  banner.style.display='flex';
+  if(pendingWrite){
+    btn.style.display='';
+    document.getElementById('offlineBannerText').textContent = '🔌 Sin conexión: tus cambios se guardaron en esta computadora y se van a sincronizar solos.';
+  } else {
+    btn.style.display='none';
+    const t = since ? new Date(since).toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'}) : '';
+    document.getElementById('offlineBannerText').textContent = '🔌 Modo offline: mostrando la última copia guardada (' + t + ').';
+  }
+}
+function manualSync(){ saveState(); }
+
+let lastKnownServerBeds = null; // foto de camas tal como estaban en el servidor la última vez que se leyó con éxito
+async function loadState(){
+  const cache = loadLocalCache();
+  if(cache && cache.data){
+    allIds.forEach(id => { beds[id] = cache.data.beds[id] || {status:'libre'}; });
+    pendingHistorialAppends = cache.data.pendingHistorialAppends || [];
+    renderAll();
+  }
+  try{
+    const res = await fetch(APPS_SCRIPT_URL + '?_=' + Date.now(), {cache:'no-store'});
+    const data = await res.json();
+    if(data.beds){ allIds.forEach(id => { beds[id] = data.beds[id] || {status:'libre'}; }); }
+    setOfflineBanner(false);
+    lastKnownServerBeds = JSON.parse(JSON.stringify(beds));
+    if(pendingHistorialAppends.length){
+      await saveState();
+    } else {
+      pendingHistorialAppends = [];
+      saveLocalCache({beds, pendingHistorialAppends});
+      setPendingSync(false);
+    }
+  }catch(e){
+    console.error('No se pudo cargar desde Google Sheets', e);
+    if(cache && cache.data){
+      setOfflineBanner(true, cache.savedAt, false);
+    } else {
+      alert('No se pudo conectar con la base de datos y todavía no hay copia local en esta computadora.');
+    }
+  }
+}
+async function saveState(){
+  // Antes de guardar: traer la foto actual del servidor, y para cada cama que NO hayamos
+  // tocado nosotros desde la última lectura, usar esa foto fresca en vez de la que tengamos
+  // en memoria (que puede estar vieja si esta pestaña quedó abierta mucho tiempo). Esto evita
+  // pisar Datos clínicos/Indicaciones/Pendientes que los médicos hayan cargado mientras tanto.
+  if(lastKnownServerBeds){
+    try{
+      const resFresco = await fetch(APPS_SCRIPT_URL + '?_=' + Date.now(), {cache:'no-store'});
+      const fresco = await resFresco.json();
+      if(fresco.beds){
+        allIds.forEach(id=>{
+          const local = JSON.stringify(beds[id]);
+          const conocido = JSON.stringify(lastKnownServerBeds[id]);
+          if(local === conocido){
+            beds[id] = fresco.beds[id] || {status:'libre'};
+          }
+        });
+      }
+    }catch(e){
+      console.error('No se pudo refrescar antes de guardar, se sigue con lo que había en memoria', e);
+    }
+  }
+
+  // OJO: nunca se manda "notas" ni "conflictivos" a propósito — así esta vista nunca los toca ni los borra.
+  const payload = { beds, historialAppend: pendingHistorialAppends, diagnosticosAppend: [], origen: 'enfermeria' };
+  saveLocalCache({beds, pendingHistorialAppends});
+  try{
+    const res = await fetch(APPS_SCRIPT_URL, {
+      method:'POST',
+      headers:{'Content-Type':'text/plain;charset=utf-8'},
+      body: JSON.stringify(payload)
+    });
+    const data = await res.json();
+    if(!data.ok){
+      alert('Error al guardar: ' + data.error);
+      setPendingSync(true);
+      setOfflineBanner(true, new Date().toISOString(), true);
+    } else {
+      pendingHistorialAppends = [];
+      saveLocalCache({beds, pendingHistorialAppends});
+      setPendingSync(false);
+      setOfflineBanner(false);
+      renderAll();
+      lastKnownServerBeds = JSON.parse(JSON.stringify(beds));
+    }
+  }catch(e){
+    console.error('No se pudo guardar en Google Sheets', e);
+    setPendingSync(true);
+    setOfflineBanner(true, new Date().toISOString(), true);
+  }
+}
+
+/* ---------- Init ---------- */
+(async function init(){
+  document.getElementById('todayLabel').textContent = new Date().toLocaleDateString('es-AR', {weekday:'long', year:'numeric', month:'long', day:'numeric'});
+  await loadState();
+  renderAll();
+})();
+
+/* ---------- Actualización automática de la página tras inactividad (una sola vez por período) ---------- */
+const AUTO_RELOAD_MS = 30000; // 30 segundos sin actividad
+let lastActivityTime = Date.now();
+let autoReloadedThisIdle = (function(){ try{ return sessionStorage.getItem('sala11_enf_auto_reloaded')==='1'; }catch(e){ return false; } })();
+['mousemove','mousedown','keydown','touchstart','scroll'].forEach(evt=>{
+  window.addEventListener(evt, ()=>{
+    lastActivityTime = Date.now();
+    if(autoReloadedThisIdle){
+      autoReloadedThisIdle = false;
+      try{ sessionStorage.removeItem('sala11_enf_auto_reloaded'); }catch(e){}
+    }
+  }, {passive:true});
+});
+setInterval(()=>{
+  if(autoReloadedThisIdle) return;
+  const inactivo = Date.now() - lastActivityTime >= AUTO_RELOAD_MS;
+  const hayModalAbierto = !!document.querySelector('.overlay.show');
+  if(inactivo && !hayModalAbierto){
+    autoReloadedThisIdle = true;
+    try{ sessionStorage.setItem('sala11_enf_auto_reloaded', '1'); }catch(e){}
+    location.reload();
+  }
+}, 2000);
+</script>
+<div style="text-align:center; margin:4px auto 22px; max-width:520px; padding:10px 18px; background:var(--teal); color:#fff; border-radius:10px; font-size:14.5px; font-weight:700; letter-spacing:.01em; box-shadow:0 2px 6px rgba(0,0,0,.15);">
+  🩺 Herramienta desarrollada por Matías Gastón Pérez
+</div>
+<div style="text-align:center; margin:-14px auto 22px;">
+  <a href="index.html" onclick="try{localStorage.removeItem('sala11_rol');}catch(e){}" style="font-size:12.5px; color:var(--ink-soft); text-decoration:none; font-weight:700;">🔁 Cambiar de vista</a>
+</div>
+</body>
+</html>
