@@ -6,6 +6,7 @@
 <title>Sala 11 — Mapa de camas</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<script src="https://accounts.google.com/gsi/client" async defer></script>
 <style>
   :root{
     --bg: #F4F6F7;
@@ -304,7 +305,15 @@
 </head>
 <body>
 
-<div class="wrap">
+<div id="loginOverlay" style="position:fixed; inset:0; background:var(--bg); z-index:9999; display:flex; align-items:center; justify-content:center; flex-direction:column; gap:16px; text-align:center; padding:24px;">
+  <div style="font-size:32px; font-weight:900; color:var(--teal-dark); text-transform:uppercase; letter-spacing:1px;">Sala 11</div>
+  <p style="color:var(--ink-soft); font-size:14.5px; max-width:320px; margin:0;">Iniciá sesión con tu cuenta de Google para acceder a la vista de médicos.</p>
+  <div id="googleSignInBtn"></div>
+  <p id="loginError" style="color:#C0392B; font-size:13px; font-weight:700; display:none; max-width:320px;"></p>
+  <a href="index.html" style="font-size:12.5px; color:var(--ink-soft); margin-top:10px;">← Volver a elegir vista</a>
+</div>
+
+<div class="wrap" id="mainWrap" style="display:none;">
   <header>
     <div class="title-block">
       <h1>Sala 11</h1>
@@ -398,6 +407,8 @@
 </div>
 <div style="text-align:center; margin:-14px auto 22px;">
   <a href="index.html" onclick="try{localStorage.removeItem('sala11_rol');}catch(e){}" style="font-size:12.5px; color:var(--ink-soft); text-decoration:none; font-weight:700;">🔁 Cambiar de vista</a>
+  &nbsp;·&nbsp;
+  <a href="#" onclick="cerrarSesion(); return false;" style="font-size:12.5px; color:var(--ink-soft); text-decoration:none; font-weight:700;">🔒 Cerrar sesión</a>
 </div>
 
 <!-- Modal cama -->
@@ -898,7 +909,10 @@ function saveBed(){
     const fechaIngresoHospital = entradaUTI ? entradaUTI.ingresoHospital : (fIH ? isoToEsAr(fIH) : (existing ? existing.fechaIngresoHospital : new Date().toLocaleDateString('es-AR')));
     const fechaIngresoSala = entradaUTI ? entradaUTI.ingresoSala : (fIS ? isoToEsAr(fIS) : (existing ? existing.fechaIngresoSala : new Date().toLocaleDateString('es-AR')));
     const aislamiento = (!isIso || BATH_PAIRS[id]) ? document.getElementById('fAislamiento').value : 'ninguno';
-    beds[id] = { status:'ocupada', patient:{ nombre, dni, medico, obraSocial, aislamiento, procedencia, fechaIngresoHospital, fechaIngresoSala, clinico: existing && existing.clinico, indicaciones: existing && existing.indicaciones, pendientes: existing && existing.pendientes } };
+    const clinicoInicial = entradaUTI
+      ? { evolucion: '📌 Pasó por UTI desde el ' + entradaUTI.egreso + ' hasta el ' + new Date().toLocaleDateString('es-AR') + ' (regresó a sala).' }
+      : (existing && existing.clinico);
+    beds[id] = { status:'ocupada', patient:{ nombre, dni, medico, obraSocial, aislamiento, procedencia, fechaIngresoHospital, fechaIngresoSala, clinico: clinicoInicial, indicaciones: existing && existing.indicaciones, pendientes: existing && existing.pendientes } };
 
     if(entradaUTI){
       // Fusionar: sacar la fila de "Pase a UTI" del historial (local y en la planilla) y cerrar la notita de seguimiento.
@@ -1392,7 +1406,7 @@ function toggleRescateDetalle(){
   document.getElementById('rescateDetalleWrap').style.display = document.getElementById('cRescateMicro').value==='Sí' ? '' : 'none';
 }
 const DIAG_OPCIONES = [
-  'Neumonía por Pneumocystis (PCP)','Toxoplasmosis cerebral','Candidiasis esofágica','Criptococosis',
+  'Neumonía por Pneumocystis (PCP)','Toxoplasmosis cerebral','Candidiasis oro-esofágica','Criptococosis',
   'Complejo Mycobacterium avium (MAC)','Citomegalovirus (CMV)','Sarcoma de Kaposi',
   'Linfoma no Hodgkin','Leucoencefalopatía multifocal progresiva (LMP)','Criptosporidiasis / Isosporidiasis',
   'Síndrome de desgaste (wasting)','Síndrome de Respuesta Inflamatoria (SRI/IRIS)','No oportunista (otra causa)'
@@ -1910,6 +1924,12 @@ function construirAntecedenteVIH(c){
   else if(c.diagnosticoVIH==='Crónico') transmision = 'larga data (crónico)';
   else if(c.diagnosticoVIH==='Reciente (menos de 6 meses)') transmision = 'reciente diagnóstico';
   let frase = 'PVVIH de ' + transmision;
+  if(c.cd4 || c.cv){
+    const partes = [];
+    if(c.cd4) partes.push('CD4 ' + c.cd4 + ' cél/ml');
+    if(c.cv) partes.push('CV ' + c.cv + (/^\d+$/.test(c.cv.trim()) ? ' cop/ml' : ''));
+    frase += ' (' + partes.join(', ') + ')';
+  }
   if(c.tarv==='En tratamiento'){
     const drogas = [...(c.tarvDrogas||[]), c.tarvDrogasOtra||''].filter(Boolean).join(', ');
     frase += ', en TARV' + (drogas ? ' con ' + drogas : '');
@@ -3584,7 +3604,7 @@ async function loadState(){
   }
 
   try{
-    const res = await fetch(APPS_SCRIPT_URL + '?_=' + Date.now(), {cache:'no-store'});
+    const res = await fetch(APPS_SCRIPT_URL + '?_=' + Date.now() + '&token=' + encodeURIComponent(googleIdToken||''), {cache:'no-store'});
     const data = await res.json();
     // SALVAGUARDA: si la planilla devolvió una foto sospechosamente vacía (por un hipo pasajero
     // de Google/la red), NO la tomamos como válida — mantenemos lo que ya teníamos (de la copia
@@ -3594,6 +3614,12 @@ async function loadState(){
     if(!data_confiable){
       console.error('loadState: la lectura de la planilla vino sospechosamente vacía, se ignora para no pisar lo que ya había.');
       throw new Error('Lectura del servidor sospechosamente vacía (menos de la mitad de las camas esperadas)');
+    }
+    // Si la respuesta no trae "historial", la sesión no fue reconocida como médico válido
+    // (token vencido o inexistente) — pedir que inicie sesión de nuevo.
+    if(data.historial === undefined){
+      mostrarPantallaLogin('Tu sesión expiró o no es válida. Iniciá sesión de nuevo para continuar.');
+      return;
     }
     // A partir de acá tenemos la foto REAL y actual del servidor — beds y notas se reemplazan
     // por completo con esto, nunca con una copia vieja guardada en esta computadora.
@@ -3636,7 +3662,7 @@ async function saveState(undoEgreso, completarClinico, mergeUTI){
   // la conseguimos recién ahora — así el guardado real no se pierde.
   if(!lastKnownServerBeds){
     try{
-      const res0 = await fetch(APPS_SCRIPT_URL + '?_=' + Date.now(), {cache:'no-store'});
+      const res0 = await fetch(APPS_SCRIPT_URL + '?_=' + Date.now() + '&token=' + encodeURIComponent(googleIdToken||''), {cache:'no-store'});
       const data0 = await res0.json();
       const data0_confiable = data0.beds && Object.keys(data0.beds).length >= allIds.length / 2;
       if(data0_confiable) lastKnownServerBeds = data0.beds;
@@ -3661,7 +3687,7 @@ async function saveState(undoEgreso, completarClinico, mergeUTI){
   // en memoria (que puede estar vieja si esta pestaña quedó abierta mucho tiempo). Las camas
   // que sí cambiamos localmente se respetan tal cual, para que el guardado se aplique.
   try{
-    const resFresco = await fetch(APPS_SCRIPT_URL + '?_=' + Date.now(), {cache:'no-store'});
+    const resFresco = await fetch(APPS_SCRIPT_URL + '?_=' + Date.now() + '&token=' + encodeURIComponent(googleIdToken||''), {cache:'no-store'});
     const fresco = await resFresco.json();
     // SALVAGUARDA: si la respuesta fresca viene sospechosamente vacía (menos de la mitad de las
     // camas esperadas), no confiamos en ella para "actualizar" camas que no tocamos — mejor
@@ -3692,7 +3718,7 @@ async function saveState(undoEgreso, completarClinico, mergeUTI){
   // Censo/Notas/Meta viajan completos (son chicos y de tamaño fijo/acotado).
   // Historial y Diagnosticos viajan SOLO como "lo nuevo desde el último guardado exitoso",
   // para que la planilla los agregue al final sin reescribir años de datos acumulados.
-  const payload = {beds, notas, conflictivos, historialAppend: pendingHistorialAppends, diagnosticosAppend: pendingDiagnosticosAppends, desenlaceUTIAppend: pendingDesenlaceUTIAppends};
+  const payload = {beds, notas, conflictivos, historialAppend: pendingHistorialAppends, diagnosticosAppend: pendingDiagnosticosAppends, desenlaceUTIAppend: pendingDesenlaceUTIAppends, token: googleIdToken};
   if(undoEgreso) payload.undoEgreso = undoEgreso;
   if(completarClinico) payload.completarClinico = completarClinico;
   if(mergeUTI) payload.mergeUTI = mergeUTI;
@@ -3705,9 +3731,15 @@ async function saveState(undoEgreso, completarClinico, mergeUTI){
     });
     const data = await res.json();
     if(!data.ok){
-      alert('Error al guardar en la base de datos:\n\n' + data.error + '\n\n' + (data.stack||''));
-      setPendingSync(true);
-      setOfflineBanner(true, new Date().toISOString(), true);
+      if(String(data.error||'').includes('No autorizado')){
+        setPendingSync(true);
+        setOfflineBanner(true, new Date().toISOString(), true);
+        mostrarPantallaLogin('Tu sesión expiró. Iniciá sesión de nuevo — lo que estabas guardando queda a salvo localmente y se va a mandar apenas vuelvas a entrar.');
+      } else {
+        alert('Error al guardar en la base de datos:\n\n' + data.error + '\n\n' + (data.stack||''));
+        setPendingSync(true);
+        setOfflineBanner(true, new Date().toISOString(), true);
+      }
     } else {
       pendingHistorialAppends = []; // ya quedó guardado en la planilla, no hace falta reenviarlo
       pendingDiagnosticosAppends = [];
@@ -3726,8 +3758,73 @@ async function saveState(undoEgreso, completarClinico, mergeUTI){
   }
 }
 
+/* ---------- Login con Google ---------- */
+const GOOGLE_CLIENT_ID = '669433776444-1bjcdpkal0iq2eu3tfbajnfghfgt2sok.apps.googleusercontent.com';
+let googleIdToken = null;
+
+function guardarTokenSesion(token){
+  googleIdToken = token;
+  try{
+    const payload = JSON.parse(atob(token.split('.')[1].replace(/-/g,'+').replace(/_/g,'/')));
+    sessionStorage.setItem('sala11_google_token', token);
+    sessionStorage.setItem('sala11_google_token_exp', String(payload.exp * 1000));
+  }catch(e){}
+}
+function tokenSesionValido(){
+  try{
+    const token = sessionStorage.getItem('sala11_google_token');
+    const exp = Number(sessionStorage.getItem('sala11_google_token_exp') || 0);
+    if(token && exp > Date.now() + 60000){ // con 1 minuto de margen
+      googleIdToken = token;
+      return true;
+    }
+  }catch(e){}
+  return false;
+}
+function mostrarPantallaLogin(mensajeError){
+  document.getElementById('loginOverlay').style.display = 'flex';
+  document.getElementById('mainWrap').style.display = 'none';
+  const p = document.getElementById('loginError');
+  if(mensajeError){ p.textContent = mensajeError; p.style.display = 'block'; }
+  else { p.style.display = 'none'; }
+  intentarDibujarBotonGoogle(0);
+}
+function intentarDibujarBotonGoogle(intento){
+  if(window.google && google.accounts && google.accounts.id){
+    google.accounts.id.initialize({ client_id: GOOGLE_CLIENT_ID, callback: onGoogleSignIn });
+    document.getElementById('googleSignInBtn').innerHTML = '';
+    google.accounts.id.renderButton(document.getElementById('googleSignInBtn'), { theme:'outline', size:'large', text:'signin_with' });
+    return;
+  }
+  if(intento >= 50){ // ~5 segundos probando cada 100ms
+    document.getElementById('googleSignInBtn').innerHTML = '<p style="color:#C0392B; font-size:13px; font-weight:700;">No se pudo cargar el botón de Google. Revisá tu conexión y recargá la página.</p>';
+    return;
+  }
+  setTimeout(()=> intentarDibujarBotonGoogle(intento+1), 100);
+}
+function onGoogleSignIn(response){
+  guardarTokenSesion(response.credential);
+  document.getElementById('loginOverlay').style.display = 'none';
+  document.getElementById('mainWrap').style.display = '';
+  iniciarApp();
+}
+function cerrarSesion(){
+  try{ sessionStorage.removeItem('sala11_google_token'); sessionStorage.removeItem('sala11_google_token_exp'); }catch(e){}
+  googleIdToken = null;
+  location.reload();
+}
+(function arrancar(){
+  if(tokenSesionValido()){
+    document.getElementById('loginOverlay').style.display = 'none';
+    document.getElementById('mainWrap').style.display = '';
+    iniciarApp();
+  } else {
+    mostrarPantallaLogin();
+  }
+})();
+
 /* ---------- Init ---------- */
-(async function init(){
+async function iniciarApp(){
   document.getElementById('todayLabel').textContent = new Date().toLocaleDateString('es-AR', {weekday:'long', year:'numeric', month:'long', day:'numeric'});
   if(!backendConfigured()){
     const banner = document.getElementById('reviewBanner');
@@ -3741,7 +3838,7 @@ async function saveState(undoEgreso, completarClinico, mergeUTI){
   renderAll();
   checkNuevosIngresos();
   checkRecordatorioPendientes();
-})();
+}
 </script>
 </body>
 </html>
