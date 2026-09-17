@@ -226,9 +226,6 @@
 
   /* Modal */
   .wrap > *{ transition: filter .6s ease, transform .6s ease, box-shadow .6s ease; }
-  body.idle-mode .wrap > *:not(.pizarra){ filter:blur(7px) brightness(.55); pointer-events:none; }
-  body.idle-mode .pizarra{ box-shadow:0 0 0 3px var(--teal), 0 10px 28px rgba(0,0,0,.3); transform:scale(1.015); position:relative; z-index:5; }
-  body.idle-mode .sticky-add{ display:none; }
 
   .overlay{ position:fixed; inset:0; background:rgba(16,25,32,.45); backdrop-filter:blur(4px); -webkit-backdrop-filter:blur(4px); display:none; align-items:center; justify-content:center; padding:20px; z-index:50; }
   .overlay.show{ display:flex; }
@@ -460,6 +457,17 @@
     <div class="modal-actions" style="margin-top:18px;">
       <button class="btn ghost" onclick="closePendientesResumen()">Volver</button>
       <button class="btn" onclick="imprimirPendientesAhora()">Imprimir</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="resumenHCOverlay">
+  <div class="modal" style="max-width:620px;">
+    <button class="close-x" onclick="closeResumenHC()">✕</button>
+    <div class="print-area" id="resumenHCBody"></div>
+    <div class="modal-actions" style="margin-top:18px;">
+      <button class="btn ghost" onclick="closeResumenHC()">Volver</button>
+      <button class="btn" onclick="imprimirResumenHCAhora()">Imprimir</button>
     </div>
   </div>
 </div>
@@ -787,6 +795,7 @@ function renderFields(){
       f.innerHTML += `<button type="button" class="btn ghost" style="width:100%; margin-top:10px;" onclick="startClinico()">📋 Datos clínicos</button>`;
       f.innerHTML += `<button type="button" class="btn ghost" style="width:100%; margin-top:8px;" onclick="startIndicaciones()">💊 Indicaciones médicas</button>`;
       f.innerHTML += `<button type="button" class="btn ghost" style="width:100%; margin-top:8px;" onclick="startPendientes()">📝 Pendientes${(function(){const p=b.patient.pendientes;if(!p)return '';let n=0;PENDIENTES_CATEGORIAS.forEach(c=>{(p[c.key]||[]).forEach(it=>{if(!it.hecho)n++;});});return n?' ('+n+')':'';})()}</button>`;
+      f.innerHTML += `<button type="button" class="btn ghost" style="width:100%; margin-top:8px;" onclick="openResumenHC()">📄 Resumen de HC</button>`;
       f.innerHTML += `<button type="button" class="btn ghost" style="width:100%; margin-top:8px;" onclick="startMove()">🔀 Mudar a otra cama</button>`;
       f.innerHTML += `<button type="button" class="btn ghost" style="width:100%; margin-top:8px; border-color:var(--rot-bd); color:var(--rot-bd);" onclick="startEgreso()">📤 Registrar egreso</button>`;
     }
@@ -846,6 +855,15 @@ function showConflictoPopup(motivo){
 }
 function closeConflictoPopup(){ document.getElementById('conflictoOverlay').classList.remove('show'); }
 
+function buscarUTIPendiente(dni){
+  // Busca el "Pase a UTI" más reciente de este DNI que no haya sido ya fusionado,
+  // y que no tenga un desenlace de fallecido confirmado (si falleció, no puede "volver").
+  const fallecidos = new Set(desenlacesUTI.filter(d=>d.desenlace==='Falleció').map(d=>d.dni+'|'+d.cama+'|'+d.egreso));
+  const candidatos = historial.filter(h => h.dni===dni && h.motivoEgreso==='Pase a UTI' && !fallecidos.has(h.dni+'|'+h.cama+'|'+h.egreso));
+  if(!candidatos.length) return null;
+  candidatos.sort((a,b)=> (parseEsAr(b.egreso)||0) - (parseEsAr(a.egreso)||0));
+  return candidatos[0];
+}
 function saveBed(){
   const id = currentBed;
   const isIso = isolationBeds.some(x=>x.id===id);
@@ -861,15 +879,36 @@ function saveBed(){
     if(!/^\d{6,9}$/.test(dni)){
       if(!confirm('El DNI "'+dni+'" no parece válido (se esperan entre 6 y 9 números, sin puntos). ¿Guardar igual?')) return;
     }
+
+    // ¿Es un regreso de UTI? (solo aplica a una admisión nueva, no a editar a alguien que ya está en la cama)
+    let entradaUTI = null;
+    if(!existing){
+      const candidata = buscarUTIPendiente(dni);
+      if(candidata){
+        const seguir = confirm('Este paciente (DNI '+dni+') pasó a UTI el '+candidata.egreso+' y todavía no se registró que haya vuelto.\n\n¿Confirmás que está volviendo de UTI? Se va a unificar como la misma internación (recupera la fecha de ingreso original: '+candidata.ingresoSala+').');
+        if(seguir) entradaUTI = candidata;
+      }
+    }
+
     const medico = document.getElementById('fMedico').value;
     const obraSocial = document.getElementById('fObraSocial').checked;
     const procedencia = document.getElementById('fProcedencia').value;
     const fIH = document.getElementById('fFechaIngresoHospital').value;
     const fIS = document.getElementById('fFechaIngresoSala').value;
-    const fechaIngresoHospital = fIH ? isoToEsAr(fIH) : (existing ? existing.fechaIngresoHospital : new Date().toLocaleDateString('es-AR'));
-    const fechaIngresoSala = fIS ? isoToEsAr(fIS) : (existing ? existing.fechaIngresoSala : new Date().toLocaleDateString('es-AR'));
+    const fechaIngresoHospital = entradaUTI ? entradaUTI.ingresoHospital : (fIH ? isoToEsAr(fIH) : (existing ? existing.fechaIngresoHospital : new Date().toLocaleDateString('es-AR')));
+    const fechaIngresoSala = entradaUTI ? entradaUTI.ingresoSala : (fIS ? isoToEsAr(fIS) : (existing ? existing.fechaIngresoSala : new Date().toLocaleDateString('es-AR')));
     const aislamiento = (!isIso || BATH_PAIRS[id]) ? document.getElementById('fAislamiento').value : 'ninguno';
     beds[id] = { status:'ocupada', patient:{ nombre, dni, medico, obraSocial, aislamiento, procedencia, fechaIngresoHospital, fechaIngresoSala, clinico: existing && existing.clinico, indicaciones: existing && existing.indicaciones, pendientes: existing && existing.pendientes } };
+
+    if(entradaUTI){
+      // Fusionar: sacar la fila de "Pase a UTI" del historial (local y en la planilla) y cerrar la notita de seguimiento.
+      // Los diagnósticos que se hubieran cargado antes de ese pase a UTI NO se tocan — siguen siendo válidos.
+      historial = historial.filter(h => h !== entradaUTI);
+      pendingHistorialAppends = pendingHistorialAppends.filter(h => h !== entradaUTI);
+      notas = notas.filter(n => !(n.tipo==='uti' && n.dni===entradaUTI.dni && n.cama===entradaUTI.cama && n.egreso===entradaUTI.egreso));
+      renderNotas();
+      pendingMergeUTI = { dni: entradaUTI.dni, cama: entradaUTI.cama, egreso: entradaUTI.egreso };
+    }
 
     if(aislamiento!=='ninguno'){
       if(!isIso && NEIGHBORS[id]) tryLinkBlock(id, NEIGHBORS[id], aislamiento, 'contigua');
@@ -887,7 +926,8 @@ function saveBed(){
   }
 
   renderAll();
-  saveState();
+  saveState(undefined, undefined, pendingMergeUTI);
+  pendingMergeUTI = null;
   closeModal();
 }
 function startEgreso(){
@@ -957,10 +997,8 @@ function confirmEgreso(){
     tuvoTBPrevia: c.tuvoTBPrevia || '',
     completoTratamientoTBPrevia: c.tuvoTBPrevia==='Sí' ? (c.completoTratamientoTBPrevia||'') : '',
     tuvoTB: c.tuvoTB || '',
-    situacionTB: c.situacionTB || '',
     formaClinicaTB: (c.formaClinicaTB||[]).join(', ') + (c.formaClinicaTBOtra ? (c.formaClinicaTB&&c.formaClinicaTB.length?', ':'')+c.formaClinicaTBOtra : ''),
     confirmacionTB: c.confirmacionTB || '',
-    tratamientoTB: c.tratamientoTB || '',
     esquemaTB: c.esquemaTB || '',
     causaEsquemaTB: c.esquemaTB==='Alternativo' ? (c.causaEsquemaTB==='Otro' ? (c.causaEsquemaTBOtra||'Otro') : (c.causaEsquemaTB||'')) : '',
     internacionPreviaOtroLugar: c.internacionPreviaOtroLugar || '',
@@ -970,6 +1008,9 @@ function confirmEgreso(){
     vdrl: c.vdrl || '',
     vdrlDilucion: c.vdrl==='Positiva' ? (c.vdrlDilucion||'') : '',
     comorbilidades: [...(c.comorbilidades||[]), c.comorbilidadesOtras||''].filter(Boolean).join(', '),
+    tieneAlergias: c.tieneAlergias || '',
+    tipoReaccionAlergia: c.tieneAlergias==='Sí' ? (c.tipoReaccionAlergia||'') : '',
+    farmacoAlergia: c.tieneAlergias==='Sí' ? (c.farmacoAlergia||'') : '',
     infeccionesIH: (c.infeccionesIH||[]).join(', '),
     rescateMicro: c.rescateMicro || '',
     germen: c.rescateMicro==='Sí' ? (c.germen||'') : '',
@@ -1009,7 +1050,8 @@ function confirmEgreso(){
     const diagEntry = {
       dni: patient.dni, nombre: patient.nombre, cama: id, egreso: fecha,
       categoria: (d.categoria==='Otra' || d.categoria==='No oportunista (otra causa)') ? (d.otra || d.categoria) : d.categoria,
-      estado: d.estado, tratamiento: d.tratamiento
+      estado: d.estado, tratamiento: d.tratamiento,
+      fechaInicioTratamiento: d.fechaInicioTratamiento || '', fechaFinTratamiento: d.fechaFinTratamiento || ''
     };
     diagnosticosLog.push(diagEntry);
     pendingDiagnosticosAppends.push(diagEntry);
@@ -1022,7 +1064,8 @@ function confirmEgreso(){
       dni: patient.dni, nombre: patient.nombre, cama: id, egreso: fecha,
       categoria: 'Tuberculosis',
       estado: c.confirmacionTB==='Confirmada' ? 'Confirmado' : 'Sospecha',
-      tratamiento: c.tratamientoTB || ''
+      tratamiento: '',
+      fechaInicioTratamiento: c.tbFechaInicioTratamiento || '', fechaFinTratamiento: c.tbFechaFinTratamiento || ''
     };
     diagnosticosLog.push(diagTB);
     pendingDiagnosticosAppends.push(diagTB);
@@ -1077,13 +1120,6 @@ function renderClinicoFormHTML(c){
         <option value="Sí" ${c.situacionVivienda==='Sí'?'selected':''}>Sí</option>
       </select>
     </div>
-    <div class="field"><label>Trastorno de adicción a drogas psicoactivas</label>
-      <select id="cTrastornoAdiccion">
-        <option value="" ${!c.trastornoAdiccion?'selected':''}>-- Elegir --</option>
-        <option value="No" ${c.trastornoAdiccion==='No'?'selected':''}>No</option>
-        <option value="Sí" ${c.trastornoAdiccion==='Sí'?'selected':''}>Sí</option>
-      </select>
-    </div>
 
       </div>
     </details>
@@ -1091,14 +1127,14 @@ function renderClinicoFormHTML(c){
       <summary>2. VIH</summary>
       <div class="ind-details-body">
     <div class="field"><label>Diagnóstico de VIH</label>
-      <select id="cDiagnosticoVIH">
+      <select id="cDiagnosticoVIH" onchange="toggleTiempoDxVIH()">
         <option value="" ${!c.diagnosticoVIH?'selected':''}>-- Elegir --</option>
         <option value="Vertical" ${c.diagnosticoVIH==='Vertical'?'selected':''}>Vertical</option>
         <option value="Crónico" ${c.diagnosticoVIH==='Crónico'?'selected':''}>Crónico</option>
         <option value="Reciente (menos de 6 meses)" ${c.diagnosticoVIH==='Reciente (menos de 6 meses)'?'selected':''}>Reciente (&lt;6 meses)</option>
       </select>
     </div>
-    <div class="field"><label>Tiempo aproximado desde el diagnóstico de VIH</label>
+    <div class="field" id="cTiempoDxVIHWrap" style="${c.diagnosticoVIH==='Crónico'?'':'display:none;'}"><label>Tiempo aproximado desde el diagnóstico de VIH</label>
       <select id="cTiempoDxVIH">
         <option value="" ${!c.tiempoDxVIH?'selected':''}>-- Elegir --</option>
         ${TIEMPO_DX_OPCIONES.map(op=>`<option value="${op}" ${c.tiempoDxVIH===op?'selected':''}>${op}</option>`).join('')}
@@ -1211,12 +1247,6 @@ function renderClinicoFormHTML(c){
       </select>
     </div>
     <div id="tbDetalleWrap" style="${c.tuvoTB==='Sí'?'':'display:none;'}">
-      <div class="field"><label>Situación clínica con la TB</label>
-        <select id="cSituacionTB">
-          <option value="" ${!c.situacionTB?'selected':''}>-- Elegir --</option>
-          ${TB_SITUACION_OPCIONES.map(op=>`<option value="${op}" ${c.situacionTB===op?'selected':''}>${op}</option>`).join('')}
-        </select>
-      </div>
       <div class="field"><label>Forma clínica</label>
         <div style="display:flex; flex-wrap:wrap; gap:6px; margin-bottom:6px;">
           ${TB_FORMA_OPCIONES.map(op=>`<label style="display:flex; align-items:center; gap:4px; font-size:14.2px; font-weight:600; color:var(--ink); border:1px solid var(--line); border-radius:6px; padding:5px 8px;"><input type="checkbox" class="tbFormaCheck" value="${op}" ${(c.formaClinicaTB||[]).includes(op)?'checked':''} style="width:auto;">${op}</label>`).join('')}
@@ -1229,15 +1259,6 @@ function renderClinicoFormHTML(c){
           <option value="Confirmada" ${c.confirmacionTB==='Confirmada'?'selected':''}>Confirmada (bacteriología/histología)</option>
           <option value="Pendiente" ${c.confirmacionTB==='Pendiente'?'selected':''}>Pendiente (muestras tomadas, resultado en estudio)</option>
           <option value="Empírico" ${c.confirmacionTB==='Empírico'?'selected':''}>Empírico (tratamiento sin muestras en estudio)</option>
-        </select>
-      </div>
-      <div class="field"><label>Tratamiento actual</label>
-        <select id="cTratamientoTB">
-          <option value="" ${!c.tratamientoTB?'selected':''}>-- Elegir --</option>
-          <option value="No recibe" ${c.tratamientoTB==='No recibe'?'selected':''}>No recibe tratamiento</option>
-          <option value="Inició en esta internación" ${c.tratamientoTB==='Inició en esta internación'?'selected':''}>Inició tratamiento en esta internación</option>
-          <option value="Continúa ya iniciado" ${c.tratamientoTB==='Continúa ya iniciado'?'selected':''}>Continúa tratamiento ya iniciado</option>
-          <option value="Abandonó durante la internación" ${c.tratamientoTB==='Abandonó durante la internación'?'selected':''}>Abandonó el tratamiento durante esta internación</option>
         </select>
       </div>
       <div class="field"><label>Esquema de tratamiento</label>
@@ -1255,6 +1276,8 @@ function renderClinicoFormHTML(c){
         </select>
         <input id="cCausaEsquemaTBOtra" value="${c.causaEsquemaTBOtra||''}" placeholder="Si elegiste Otro, especificar" style="margin-top:6px;">
       </div>
+      <div class="field"><label>Fecha de inicio del tratamiento</label><input type="date" id="cTBFechaInicio" value="${c.tbFechaInicioTratamiento||''}"></div>
+      <div class="field"><label>Fecha de finalización</label><input type="date" id="cTBFechaFin" value="${c.tbFechaFinTratamiento||''}"></div>
     </div>
 
       </div>
@@ -1267,6 +1290,24 @@ function renderClinicoFormHTML(c){
         ${COMORB_OPCIONES.map(op=>`<label style="display:flex; align-items:center; gap:4px; font-size:14.2px; font-weight:600; color:var(--ink); border:1px solid var(--line); border-radius:6px; padding:5px 8px;"><input type="checkbox" class="comorbCheck" value="${op}" ${(c.comorbilidades||[]).includes(op)?'checked':''} style="width:auto;">${op}</label>`).join('')}
       </div>
       <input id="cComorbilidadesOtras" value="${c.comorbilidadesOtras||''}" placeholder="Otras (especificar)">
+    </div>
+    <div class="field"><label>Alergias</label>
+      <select id="cTieneAlergias" onchange="toggleAlergiasDetalle()">
+        <option value="" ${!c.tieneAlergias?'selected':''}>-- Elegir --</option>
+        <option value="No" ${c.tieneAlergias==='No'?'selected':''}>No</option>
+        <option value="Sí" ${c.tieneAlergias==='Sí'?'selected':''}>Sí</option>
+      </select>
+    </div>
+    <div id="alergiasDetalleWrap" style="${c.tieneAlergias==='Sí'?'':'display:none;'}">
+      <div class="field"><label>Tipo de reacción</label>
+        <select id="cTipoReaccionAlergia">
+          <option value="" ${!c.tipoReaccionAlergia?'selected':''}>-- Elegir --</option>
+          <option value="Angioedema" ${c.tipoReaccionAlergia==='Angioedema'?'selected':''}>Angioedema</option>
+          <option value="Farmacodermia" ${c.tipoReaccionAlergia==='Farmacodermia'?'selected':''}>Farmacodermia</option>
+          <option value="Anafilaxia" ${c.tipoReaccionAlergia==='Anafilaxia'?'selected':''}>Anafilaxia</option>
+        </select>
+      </div>
+      <div class="field"><label>¿Con qué fármaco?</label><input id="cFarmacoAlergia" value="${c.farmacoAlergia||''}"></div>
     </div>
 
       </div>
@@ -1333,14 +1374,14 @@ function renderClinicoFormHTML(c){
 
 let diagCounter = 0;
 let activeDiagIndexes = [];
-const COMORB_OPCIONES = ['Diabetes','HTA','Desnutrición','Tabaquismo severo','EPOC','Insuficiencia cardíaca','ERC','Cirrosis'];
+const COMORB_OPCIONES = ['Diabetes','HTA','Desnutrición','Tabaquismo severo','EPOC','Insuficiencia cardíaca','ERC','Cirrosis','Trastorno de adicción a drogas psicoactivas'];
 const IIH_OPCIONES = ['Neumonía intrahospitalaria','Neumonía asociada a ventilación','Bacteriemia','ITU','Diarrea por C. difficile','Infección asociada a catéter'];
 const GERMEN_OPCIONES = ['SAMS','SAMR','Enterobacteria','ABA (Acinetobacter baumannii)','PAE (Pseudomonas aeruginosa)','Clostridium difficile','Otro'];
 const MECANISMO_OPCIONES = ['BLEE','AMPc','KPC','MBL','OXA'];
 const TB_SITUACION_OPCIONES = ['Primer episodio (sin antecedente de TB)','Recaída / reinfección','Retoma tratamiento abandonado','Fracaso terapéutico'];
 const TB_FORMA_OPCIONES = ['Pulmonar','Miliar/diseminada','Meníngea/SNC','Ganglionar','Pleural','Ósea/osteoarticular','Digestiva/abdominal','Otra'];
 const TB_CAUSA_ESQUEMA_OPCIONES = ['Hepatotoxicidad','Farmacodermia','Intolerancia','Resistencia','Otro'];
-const TIEMPO_DX_OPCIONES = ['Menos de 1 año','1 a 5 años','5 a 10 años','Más de 10 años','No sabe'];
+const TIEMPO_DX_OPCIONES = ['6-12 meses','1 a 5 años','5 a 10 años','Más de 10 años','No sabe'];
 const TARV_DROGAS_OPCIONES = ['Tenofovir disoproxil (TDF)','Tenofovir alafenamida (TAF)','Emtricitabina (FTC)','Lamivudina (3TC)','Dolutegravir (DTG)','Bictegravir (BIC)','Raltegravir (RAL)','Efavirenz (EFV)','Darunavir/ritonavir (DRV/r)'];
 const TIPO_ESQUEMA_TARV_OPCIONES = ['Clásico (2 análogos + tercera droga)','Biterapia','Fallo virológico - ajustado a test de resistencia','Fallo virológico - a ciegas (empírico)'];
 const TIEMPO_INTERNACION_PREVIA_OPCIONES = ['Menos de 1 mes','1 a 3 meses','3 a 6 meses','6 a 12 meses','Más de 1 año','No sabe'];
@@ -1357,7 +1398,7 @@ const DIAG_OPCIONES = [
   'Síndrome de desgaste (wasting)','Síndrome de Respuesta Inflamatoria (SRI/IRIS)','No oportunista (otra causa)'
 ];
 function renderDiagBlock(entry, idx){
-  entry = entry || {categoria:'', otra:'', estado:'Sospecha', tratamiento:''};
+  entry = entry || {categoria:'', otra:'', estado:'Sospecha', tratamiento:'', fechaInicioTratamiento:'', fechaFinTratamiento:''};
   return `
     <div class="diag-entry" id="diagEntry_${idx}" style="border:1px solid var(--line); border-radius:10px; padding:10px; margin-bottom:10px;">
       <div class="field"><label>Diagnóstico</label>
@@ -1374,6 +1415,8 @@ function renderDiagBlock(entry, idx){
         </select>
       </div>
       <div class="field"><label>Tratamiento</label><textarea id="dTrat_${idx}" rows="2">${entry.tratamiento||''}</textarea></div>
+      <div class="field"><label>Fecha de inicio (si se indicó algún antimicrobiano)</label><input type="date" id="dFechaInicio_${idx}" value="${entry.fechaInicioTratamiento||''}"></div>
+      <div class="field"><label>Fecha de finalización</label><input type="date" id="dFechaFin_${idx}" value="${entry.fechaFinTratamiento||''}"></div>
       <button type="button" class="btn ghost" style="width:100%; border-color:var(--rot-bd); color:var(--rot-bd);" onclick="removeDiagEntry(${idx})">Quitar este diagnóstico</button>
     </div>
   `;
@@ -1393,6 +1436,12 @@ function removeDiagEntry(idx){
   const el = document.getElementById('diagEntry_'+idx);
   if(el) el.remove();
   activeDiagIndexes = activeDiagIndexes.filter(i=>i!==idx);
+}
+function toggleTiempoDxVIH(){
+  document.getElementById('cTiempoDxVIHWrap').style.display = document.getElementById('cDiagnosticoVIH').value==='Crónico' ? '' : 'none';
+}
+function toggleAlergiasDetalle(){
+  document.getElementById('alergiasDetalleWrap').style.display = document.getElementById('cTieneAlergias').value==='Sí' ? '' : 'none';
 }
 function toggleTBDetalle(){
   document.getElementById('tbDetalleWrap').style.display = document.getElementById('cTuvoTB').value==='Sí' ? '' : 'none';
@@ -1472,7 +1521,9 @@ function saveClinico(){
     categoria: document.getElementById('dCat_'+idx).value,
     otra: document.getElementById('dOtra_'+idx) ? document.getElementById('dOtra_'+idx).value.trim() : '',
     estado: document.getElementById('dEstado_'+idx).value,
-    tratamiento: document.getElementById('dTrat_'+idx).value.trim()
+    tratamiento: document.getElementById('dTrat_'+idx).value.trim(),
+    fechaInicioTratamiento: document.getElementById('dFechaInicio_'+idx).value,
+    fechaFinTratamiento: document.getElementById('dFechaFin_'+idx).value
   }));
   const comorbilidades = [...document.querySelectorAll('.comorbCheck:checked')].map(el=>el.value);
   const tuvoIIH = document.getElementById('cTuvoIIH').value;
@@ -1501,14 +1552,14 @@ function saveClinico(){
     tuvoTBPrevia: document.getElementById('cTuvoTBPrevia').value,
     completoTratamientoTBPrevia: document.getElementById('cTuvoTBPrevia').value==='Sí' ? document.getElementById('cCompletoTratamientoTBPrevia').value : '',
     tuvoTB: document.getElementById('cTuvoTB').value,
-    situacionTB: document.getElementById('cTuvoTB').value==='Sí' ? document.getElementById('cSituacionTB').value : '',
     formaClinicaTB: document.getElementById('cTuvoTB').value==='Sí' ? [...document.querySelectorAll('.tbFormaCheck:checked')].map(el=>el.value) : [],
     formaClinicaTBOtra: document.getElementById('cTuvoTB').value==='Sí' ? document.getElementById('cFormaTBOtra').value.trim() : '',
     confirmacionTB: document.getElementById('cTuvoTB').value==='Sí' ? document.getElementById('cConfirmacionTB').value : '',
-    tratamientoTB: document.getElementById('cTuvoTB').value==='Sí' ? document.getElementById('cTratamientoTB').value : '',
     esquemaTB: document.getElementById('cTuvoTB').value==='Sí' ? document.getElementById('cEsquemaTB').value : '',
     causaEsquemaTB: (document.getElementById('cTuvoTB').value==='Sí' && document.getElementById('cEsquemaTB').value==='Alternativo') ? document.getElementById('cCausaEsquemaTB').value : '',
     causaEsquemaTBOtra: (document.getElementById('cTuvoTB').value==='Sí' && document.getElementById('cEsquemaTB').value==='Alternativo') ? document.getElementById('cCausaEsquemaTBOtra').value.trim() : '',
+    tbFechaInicioTratamiento: document.getElementById('cTuvoTB').value==='Sí' ? document.getElementById('cTBFechaInicio').value : '',
+    tbFechaFinTratamiento: document.getElementById('cTuvoTB').value==='Sí' ? document.getElementById('cTBFechaFin').value : '',
     internacionPreviaOtroLugar: document.getElementById('cInternacionPreviaOtroLugar').value,
     tiempoInternacionPreviaOtroLugar: document.getElementById('cInternacionPreviaOtroLugar').value==='Sí' ? document.getElementById('cTiempoInternacionPrevia').value : '',
     internacionPreviaPorIO: document.getElementById('cInternacionPreviaOtroLugar').value==='Sí' ? document.getElementById('cInternacionPreviaPorIO').value : '',
@@ -1517,8 +1568,11 @@ function saveClinico(){
     vdrlDilucion: document.getElementById('cVDRL').value==='Positiva' ? document.getElementById('cVDRLDilucion').value.trim() : '',
     comorbilidades,
     comorbilidadesOtras: document.getElementById('cComorbilidadesOtras').value.trim(),
+    tieneAlergias: document.getElementById('cTieneAlergias').value,
+    tipoReaccionAlergia: document.getElementById('cTieneAlergias').value==='Sí' ? document.getElementById('cTipoReaccionAlergia').value : '',
+    farmacoAlergia: document.getElementById('cTieneAlergias').value==='Sí' ? document.getElementById('cFarmacoAlergia').value.trim() : '',
     tuvoIIH, infeccionesIH, rescateMicro, germen, sensibilidad, mecanismoResistencia,
-    trastornoAdiccion: document.getElementById('cTrastornoAdiccion').value,
+    trastornoAdiccion: comorbilidades.includes('Trastorno de adicción a drogas psicoactivas') ? 'Sí' : 'No',
     diagnosticos,
     evolucion: document.getElementById('cEvolucion').value.trim()
   };
@@ -1535,10 +1589,10 @@ function saveClinico(){
       tarvDrogas: [...(clinico.tarvDrogas||[]), clinico.tarvDrogasOtra||''].filter(Boolean).join(', '),
       tuvoTBPrevia: clinico.tuvoTBPrevia || 'No',
       completoTratamientoTBPrevia: clinico.tuvoTBPrevia==='Sí' ? (clinico.completoTratamientoTBPrevia||'') : '',
-      tuvoTB: clinico.tuvoTB || 'No', situacionTB: clinico.situacionTB || '',
+      tuvoTB: clinico.tuvoTB || 'No',
       formaClinicaTB: (clinico.formaClinicaTB||[]).join(', ') + (clinico.formaClinicaTBOtra ? (clinico.formaClinicaTB&&clinico.formaClinicaTB.length?', ':'')+clinico.formaClinicaTBOtra : ''),
       confirmacionTB: clinico.confirmacionTB || '',
-      tratamientoTB: clinico.tratamientoTB || '', esquemaTB: clinico.esquemaTB || '',
+      esquemaTB: clinico.esquemaTB || '',
       causaEsquemaTB: clinico.esquemaTB==='Alternativo' ? (clinico.causaEsquemaTB==='Otro' ? (clinico.causaEsquemaTBOtra||'Otro') : (clinico.causaEsquemaTB||'')) : '',
       internacionPreviaOtroLugar: clinico.internacionPreviaOtroLugar || 'No',
       tiempoInternacionPreviaOtroLugar: clinico.internacionPreviaOtroLugar==='Sí' ? (clinico.tiempoInternacionPreviaOtroLugar||'') : '',
@@ -1546,6 +1600,9 @@ function saveClinico(){
       antecedenteSifilis: clinico.antecedenteSifilis || 'No', vdrl: clinico.vdrl || 'Negativa',
       vdrlDilucion: clinico.vdrl==='Positiva' ? (clinico.vdrlDilucion||'') : '',
       comorbilidades: [...(clinico.comorbilidades||[]), clinico.comorbilidadesOtras||''].filter(Boolean).join(', '),
+      tieneAlergias: clinico.tieneAlergias || 'No',
+      tipoReaccionAlergia: clinico.tieneAlergias==='Sí' ? (clinico.tipoReaccionAlergia||'') : '',
+      farmacoAlergia: clinico.tieneAlergias==='Sí' ? (clinico.farmacoAlergia||'') : '',
       infeccionesIH: (clinico.infeccionesIH||[]).join(', '),
       rescateMicro: clinico.rescateMicro || 'No',
       germen: clinico.rescateMicro==='Sí' ? (clinico.germen||'') : '',
@@ -1564,7 +1621,8 @@ function saveClinico(){
       const diagEntry = {
         dni, nombre: clinicoRetroInfo.nombre, cama, egreso,
         categoria: (d.categoria==='Otra' || d.categoria==='No oportunista (otra causa)') ? (d.otra || d.categoria) : d.categoria,
-        estado: d.estado, tratamiento: d.tratamiento
+        estado: d.estado, tratamiento: d.tratamiento,
+        fechaInicioTratamiento: d.fechaInicioTratamiento || '', fechaFinTratamiento: d.fechaFinTratamiento || ''
       };
       diagnosticosLog.push(diagEntry);
       pendingDiagnosticosAppends.push(diagEntry);
@@ -1574,7 +1632,8 @@ function saveClinico(){
         dni, nombre: clinicoRetroInfo.nombre, cama, egreso,
         categoria: 'Tuberculosis',
         estado: clinico.confirmacionTB==='Confirmada' ? 'Confirmado' : 'Sospecha',
-        tratamiento: clinico.tratamientoTB || ''
+        tratamiento: '',
+        fechaInicioTratamiento: clinico.tbFechaInicioTratamiento || '', fechaFinTratamiento: clinico.tbFechaFinTratamiento || ''
       };
       diagnosticosLog.push(diagTB);
       pendingDiagnosticosAppends.push(diagTB);
@@ -1600,7 +1659,7 @@ function saveClinico(){
 /* ---------- Indicaciones médicas ---------- */
 const REFERENCIAS_CACHE_KEY = 'sala11_referencias_cache_v1';
 const HORARIOS_ADMIN = ['01',6,8,10,12,14,16,18,20,22,24];
-const DIETA_OPCIONES = ['General','Hiposódica','Gastroprotectora','Hepatoprotectora','Hiperproteica','Hipocalórica','Hipercalórica','Astringente','Blanda','Procesada','Líquida','Para diabético','Para insuficiencia renal','Para neutropénico'];
+const DIETA_OPCIONES = ['General','Hiposódica','Gastroprotectora','Hepatoprotectora','Hiperproteica','Hipocalórica','Hipercalórica','Astringente','Blanda','Procesada','Líquida','Rica en fibras','Para diabético','Para insuficiencia renal','Para neutropénico'];
 const PENDIENTES_CATEGORIAS = [
   {key:'laboratorio', label:'Laboratorio', ejemplo:'Ej: ver/pedir labo, LCR, serologías, HC, esputo, toxina CD, cultivos...'},
   {key:'imagenes', label:'Imágenes', ejemplo:'Ej: realizar/turno eco, TC, ETT, ECG; solicitar informe'},
@@ -1721,8 +1780,13 @@ function collectIndLineas(categoriaKey, conHorarios, soloDroga){
     return entry;
   }).filter(Boolean);
 }
-function renderIndicacionesFormHTML(ind){
+function renderIndicacionesFormHTML(ind, clinico){
   ind = ind || {};
+  const alergiaWarning = (clinico && clinico.tieneAlergias==='Sí') ? `
+    <div style="background:#FBE8E6; border:2px solid var(--rot-bd); color:var(--rot-tx); border-radius:10px; padding:10px 14px; margin-bottom:14px; font-weight:700; font-size:14px;">
+      ⚠️ ALERGIA: ${escInd(clinico.tipoReaccionAlergia||'')}${clinico.farmacoAlergia ? ' — ' + escInd(clinico.farmacoAlergia) : ''}
+    </div>
+  ` : '';
   const checklistBlock = (c) => `
     <details class="ind-details">
       <summary>${c.label}</summary>
@@ -1745,7 +1809,7 @@ function renderIndicacionesFormHTML(ind){
       </div>
     </details>
   `;
-  let html = '';
+  let html = alergiaWarning;
   if(!Object.keys(referencias).length){
     html += `<p class="sub-h" style="color:var(--rot-tx);">⚠️ No se pudieron cargar las listas de referencias (planilla Sala11Indicaciones). Recargá la página para reintentar.</p>`;
   }
@@ -1824,6 +1888,142 @@ function renderIndicacionesFormHTML(ind){
 }
 /* ---------- Pendientes por paciente (lista libre por categoría) ---------- */
 let pendientesWorking = null;
+/* ---------- Resumen de HC ---------- */
+function diasEntre(desde, hasta){
+  const a = new Date(desde+'T00:00:00');
+  const b = hasta ? new Date(hasta+'T00:00:00') : new Date();
+  return Math.floor((b - a) / 86400000) + 1;
+}
+function calcularDiaInternacion(fechaIngresoEsAr){
+  const partes = (fechaIngresoEsAr||'').split('/');
+  if(partes.length !== 3) return null;
+  const [d,m,y] = partes.map(Number);
+  if(!d||!m||!y) return null;
+  const ingreso = new Date(y, m-1, d);
+  const hoy = new Date();
+  return Math.floor((new Date(hoy.getFullYear(),hoy.getMonth(),hoy.getDate()) - ingreso) / 86400000) + 1;
+}
+function construirAntecedenteVIH(c){
+  if(!c.diagnosticoVIH) return '';
+  let transmision = '';
+  if(c.diagnosticoVIH==='Vertical') transmision = 'transmisión vertical';
+  else if(c.diagnosticoVIH==='Crónico') transmision = 'larga data (crónico)';
+  else if(c.diagnosticoVIH==='Reciente (menos de 6 meses)') transmision = 'reciente diagnóstico';
+  let frase = 'PVVIH de ' + transmision;
+  if(c.tarv==='En tratamiento'){
+    const drogas = [...(c.tarvDrogas||[]), c.tarvDrogasOtra||''].filter(Boolean).join(', ');
+    frase += ', en TARV' + (drogas ? ' con ' + drogas : '');
+  } else if(c.tarv==='Naive'){
+    frase += ', sin TARV (naive)';
+  } else if(c.tarv==='Abandono'){
+    frase += ', con abandono de TARV';
+  }
+  return frase;
+}
+function construirAntecedenteTBPrevia(c){
+  if(c.tuvoTBPrevia!=='Sí') return '';
+  let frase = 'Antecedente de tuberculosis previa';
+  if(c.completoTratamientoTBPrevia==='Sí') frase += ', con tratamiento completo';
+  else if(c.completoTratamientoTBPrevia==='No') frase += ', con tratamiento incompleto/abandonado';
+  return frase;
+}
+function obtenerDiagnosticosParaResumen(c){
+  const lista = (c.diagnosticos||[]).filter(d=>d.categoria).map(d=>({
+    categoria: (d.categoria==='Otra'||d.categoria==='No oportunista (otra causa)') ? (d.otra||d.categoria) : d.categoria,
+    estado: d.estado,
+    tratamiento: d.tratamiento||'',
+    fechaInicioTratamiento: d.fechaInicioTratamiento||'',
+    fechaFinTratamiento: d.fechaFinTratamiento||''
+  }));
+  if(c.tuvoTB==='Sí'){
+    const tratamientoTB = c.esquemaTB==='Alternativo' ? 'Esquema alternativo' : (c.esquemaTB==='Clásico (HRZE)' ? 'Esquema clásico (HRZE)' : '');
+    lista.push({
+      categoria: 'Tuberculosis',
+      estado: c.confirmacionTB==='Confirmada' ? 'Confirmado' : (c.confirmacionTB==='Pendiente' ? 'Pendiente' : 'Sospecha'),
+      tratamiento: tratamientoTB,
+      fechaInicioTratamiento: c.tbFechaInicioTratamiento||'',
+      fechaFinTratamiento: c.tbFechaFinTratamiento||''
+    });
+  }
+  return lista;
+}
+function buildResumenHCHTML(patient){
+  const c = patient.clinico || {};
+  const diaInternacion = patient.fechaIngresoHospital ? calcularDiaInternacion(patient.fechaIngresoHospital) : null;
+
+  let html = `
+    <div style="text-align:center; border-bottom:2px solid var(--teal); padding-bottom:12px; margin-bottom:6px;">
+      <div style="font-size:22px; font-weight:800; text-transform:uppercase; color:var(--teal-dark);">${escInd(patient.nombre||'(sin nombre)')} — DNI ${escInd(patient.dni||'-')}</div>
+      <div style="font-size:14.5px; color:var(--ink-soft); margin-top:4px; font-weight:700;">${diaInternacion ? 'Día '+diaInternacion+' de internación' : 'Día de internación desconocido'}</div>
+    </div>
+  `;
+
+  const antecedentes = [];
+  const vih = construirAntecedenteVIH(c);
+  if(vih) antecedentes.push(vih);
+  if(c.situacionVivienda==='Sí') antecedentes.push('En situación de calle');
+  const tb = construirAntecedenteTBPrevia(c);
+  if(tb) antecedentes.push(tb);
+  const comorbTxt = [...(c.comorbilidades||[]), c.comorbilidadesOtras||''].filter(Boolean).join(', ');
+  if(comorbTxt) antecedentes.push('Comorbilidades: ' + comorbTxt);
+  const coinfTxt = [c.vhb?'VHB':'', c.vhc?'VHC':'', c.otraCoinfeccion||''].filter(Boolean).join(', ');
+  if(coinfTxt) antecedentes.push('Coinfecciones: ' + coinfTxt);
+  if(c.antecedenteSifilis==='Sí') antecedentes.push('Antecedente de sífilis');
+  if(c.tieneAlergias==='Sí') antecedentes.push('Alergia' + (c.tipoReaccionAlergia?' ('+c.tipoReaccionAlergia+')':'') + (c.farmacoAlergia?' a '+c.farmacoAlergia:''));
+
+  html += `<div class="clinico-section-title">Antecedentes</div>`;
+  html += antecedentes.length
+    ? antecedentes.map(a=>`<div style="padding:5px 0 5px 10px; font-size:14px; border-left:3px solid var(--teal); margin-bottom:5px; line-height:1.4;">${escInd(a)}</div>`).join('')
+    : `<p style="color:var(--ink-soft); font-size:13px;">Sin antecedentes cargados.</p>`;
+
+  html += `<div class="clinico-section-title">Diagnósticos de esta internación</div>`;
+  const diags = obtenerDiagnosticosParaResumen(c);
+  if(diags.length){
+    html += diags.map(d=>{
+      let diasHtml = '';
+      if(d.fechaInicioTratamiento){
+        const dias = diasEntre(d.fechaInicioTratamiento, d.fechaFinTratamiento);
+        diasHtml = !d.fechaFinTratamiento
+          ? `<span style="background:#FDF3DC; color:#8A611A; font-weight:800; padding:3px 9px; border-radius:7px; font-size:12.5px; margin-left:6px; white-space:nowrap;">Día ${dias} de tratamiento (en curso)</span>`
+          : `<span style="color:var(--ink-soft); font-size:12.5px; margin-left:6px;">(completó ${dias} días de tratamiento)</span>`;
+      }
+      return `<div style="border:1px solid var(--line); border-radius:10px; padding:10px 14px; margin-bottom:8px;">
+        <div style="font-weight:800; font-size:15px;">${escInd(d.categoria)} <span style="font-weight:600; font-size:12px; color:var(--ink-soft);">(${escInd(d.estado||'')})</span></div>
+        <div style="font-size:13.5px; margin-top:4px;">${escInd(d.tratamiento)||'<span style="color:var(--ink-soft);">Sin tratamiento especificado</span>'}${diasHtml}</div>
+      </div>`;
+    }).join('');
+  } else {
+    html += `<p style="color:var(--ink-soft); font-size:13px;">Sin diagnósticos cargados en esta internación.</p>`;
+  }
+
+  html += `<div class="clinico-section-title">Pendientes</div>`;
+  const pend = patient.pendientes || {};
+  let huboPendientes = false;
+  PENDIENTES_CATEGORIAS.forEach(cat=>{
+    const items = (pend[cat.key]||[]).filter(it=>!it.hecho);
+    if(items.length){
+      huboPendientes = true;
+      html += `<div style="font-weight:700; font-size:13.5px; margin-top:8px; color:var(--teal-dark);">${cat.label}</div>`;
+      items.forEach(it=>{
+        html += `<div style="padding:2px 0 2px 12px; font-size:13.5px;">• ${escInd(it.texto)}</div>`;
+      });
+    }
+  });
+  if(!huboPendientes) html += `<p style="color:var(--ink-soft); font-size:13px;">Sin pendientes.</p>`;
+
+  return html;
+}
+function openResumenHC(){
+  const patient = beds[currentBed].patient;
+  document.getElementById('resumenHCBody').innerHTML = buildResumenHCHTML(patient);
+  document.getElementById('resumenHCOverlay').classList.add('show');
+}
+function closeResumenHC(){ document.getElementById('resumenHCOverlay').classList.remove('show'); }
+function imprimirResumenHCAhora(){
+  document.body.classList.add('print-mode');
+  window.print();
+}
+
 function startPendientes(){
   const b = beds[currentBed];
   pendientesWorking = JSON.parse(JSON.stringify(b.patient.pendientes || {laboratorio:[],imagenes:[],interconsultas:[],indicaciones:[],otros:[]}));
@@ -1945,7 +2145,7 @@ function startIndicaciones(){
   document.getElementById('modalActionsBtns').style.display = 'none';
   indLineaCounter = 0;
   indActiveLineas = {};
-  f.innerHTML = renderIndicacionesFormHTML(ind);
+  f.innerHTML = renderIndicacionesFormHTML(ind, b.patient.clinico);
   INDICACIONES_CATEGORIAS.filter(c=>c.tipo==='lineas').forEach(c=>{
     (ind[c.key]||[]).forEach(entry=>addIndLinea(c.key, c.col, entry, true));
   });
@@ -2014,6 +2214,9 @@ function buildIndicacionesPrintHTML(patient, ind, camaId){
       <div style="background:var(--teal); color:#fff; font-size:22px; font-weight:800; border-radius:6px; padding:3px 12px; min-width:50px; text-align:center;">${escInd(camaId)}</div>
     </div>
   `;
+  if(patient.clinico && patient.clinico.tieneAlergias==='Sí'){
+    html += `<div style="background:#FBE8E6; border:2px solid #C0392B; color:#9A2E22; border-radius:6px; padding:6px 10px; margin-bottom:8px; font-weight:800; font-size:12.5px;">⚠️ ALERGIA: ${escInd(patient.clinico.tipoReaccionAlergia||'')}${patient.clinico.farmacoAlergia ? ' — ' + escInd(patient.clinico.farmacoAlergia) : ''}</div>`;
+  }
   if((ind.aislamiento||[]).length){
     html += seccionTitulo('Aislamiento');
     html += listaItems(ind.aislamiento);
@@ -2187,13 +2390,13 @@ function openParte(){
 
   const filaParte = (label, value, bg, tx) =>
     `<tr>
-      <td style="padding:10px 16px; background:${bg}; color:${tx}; font-weight:700; font-size:18px; border:1px solid #fff;">${label}</td>
-      <td style="padding:10px 16px; background:${bg}; color:${tx}; text-align:right; font-weight:800; font-size:22px; border:1px solid #fff;">${value}</td>
+      <td style="padding:8px 14px; background:${bg}; color:${tx}; font-weight:700; font-size:17px; border:1px solid #444;">${label}</td>
+      <td style="padding:8px 14px; background:${bg}; color:${tx}; text-align:right; font-weight:800; font-size:21px; border:1px solid #444;">${value}</td>
     </tr>`;
   const filaSub = (label, value) =>
     `<tr>
-      <td style="padding:7px 16px 7px 32px; background:#FBE8E6; color:var(--rot-tx); font-weight:500; font-size:15px; border:1px solid #fff;">${label}</td>
-      <td style="padding:7px 16px; background:#FBE8E6; color:var(--rot-tx); text-align:right; font-weight:700; font-size:17px; border:1px solid #fff;">${value}</td>
+      <td style="padding:5px 14px 5px 28px; background:#FBE8E6; color:var(--rot-tx); font-weight:500; font-size:14px; border:1px solid #444;">${label}</td>
+      <td style="padding:5px 14px; background:#FBE8E6; color:var(--rot-tx); text-align:right; font-weight:700; font-size:16px; border:1px solid #444;">${value}</td>
     </tr>`;
 
   const subrows = Object.entries(grupos).map(([label,count])=> filaSub('No disponible por '+label, count)).join('');
@@ -2414,19 +2617,6 @@ function computeTendenciaDiagnosticoReciente(mesesAtras){
   return { labels: buckets.map(b=>b.label), values: buckets.map(b=>b.count) };
 }
 
-/* ---------- Modo inactivo (recordatorio visual) ---------- */
-const IDLE_MS = 15000; // 15 segundos sin actividad (antes de que a los 30s se recargue la página, para que este efecto llegue a verse)
-let idleTimer = null;
-function resetIdleTimer(){
-  document.body.classList.remove('idle-mode');
-  clearTimeout(idleTimer);
-  idleTimer = setTimeout(()=> document.body.classList.add('idle-mode'), IDLE_MS);
-}
-['mousemove','mousedown','keydown','touchstart','scroll'].forEach(evt=>{
-  window.addEventListener(evt, resetIdleTimer, {passive:true});
-});
-resetIdleTimer();
-
 /* ---------- Actualización automática de la página tras inactividad (una sola vez por período) ---------- */
 const AUTO_RELOAD_MS = 30000; // 30 segundos sin actividad
 let lastActivityTime = Date.now();
@@ -2498,10 +2688,11 @@ function confirmRetro(){
     ingresoSala: fIS ? isoToEsAr(fIS) : '(sin fecha)',
     diagnosticoVIH: '', tiempoDxVIH: '', cd4: '', cv: '', coinfecciones: '', tarv: '', tarvDesde: '', tipoEsquemaTARV: '', tarvDrogas: '',
     tuvoTBPrevia: 'No', completoTratamientoTBPrevia: '',
-    tuvoTB: 'No', situacionTB: '', formaClinicaTB: '', confirmacionTB: '', tratamientoTB: '', esquemaTB: '', causaEsquemaTB: '',
+    tuvoTB: 'No', formaClinicaTB: '', confirmacionTB: '', esquemaTB: '', causaEsquemaTB: '',
     internacionPreviaOtroLugar: 'No', tiempoInternacionPreviaOtroLugar: '', internacionPreviaPorIO: '',
     antecedenteSifilis: 'No', vdrl: 'Negativa', vdrlDilucion: '',
-    comorbilidades: '', infeccionesIH: '', rescateMicro: 'No', germen: '', sensibilidad: '', mecanismoResistencia: '', trastornoAdiccion: 'No',
+    comorbilidades: '', tieneAlergias: 'No', tipoReaccionAlergia: '', farmacoAlergia: '',
+    infeccionesIH: '', rescateMicro: 'No', germen: '', sensibilidad: '', mecanismoResistencia: '', trastornoAdiccion: 'No',
     evolucion: comoSeEntero ? ('No evaluado por el equipo. Cómo se enteraron: ' + comoSeEntero) : 'No evaluado por el equipo.',
     egreso: fEg ? isoToEsAr(fEg) : '(sin fecha)',
     motivoEgreso: motivo,
@@ -2669,11 +2860,24 @@ function completeNota(id){
   saveState();
 }
 const PENDIENTES_DIA_MEDICO = { 1:'Lau', 2:'Nati', 4:'Gas', 5:'Grace' }; // getDay(): 0=domingo,1=lunes,2=martes,3=miércoles,4=jueves,5=viernes,6=sábado
+function limpiarRecordatoriosPendientesVencidos(){
+  if(new Date().getHours() < 13) return false;
+  const antes = notas.length;
+  notas = notas.filter(n => n.tipo !== 'pendientesRecordatorio');
+  if(notas.length !== antes){
+    renderNotas();
+    saveState();
+    return true;
+  }
+  return false;
+}
 function checkRecordatorioPendientes(){
   if(!lastKnownServerBeds) return; // sin lectura confirmada del servidor, mejor no tocar nada todavía
+  limpiarRecordatoriosPendientesVencidos();
   const hoy = new Date();
   const medico = PENDIENTES_DIA_MEDICO[hoy.getDay()];
   if(!medico) return;
+  if(hoy.getHours() >= 13) return; // ya pasaron las 13hs: no crear una nueva, se hubiera borrado igual
   const fechaHoy = hoy.toLocaleDateString('es-AR');
   const textoEsperado = '📝 Pase de pacientes (' + medico + ')';
   const yaExiste = notas.some(n => n.tipo==='pendientesRecordatorio' && n.dni===medico && n.creada===fechaHoy);
@@ -2686,6 +2890,7 @@ function checkRecordatorioPendientes(){
   renderNotas();
   saveState();
 }
+setInterval(limpiarRecordatoriosPendientesVencidos, 60000); // por si la página queda abierta y cruza las 13hs sin recargar
 
 /* ---------- Reportes ---------- */
 function parseEsAr(str){
@@ -2772,12 +2977,13 @@ function exportarHistorialCSV(){
     ['tarv','TARV'],['tarvDesde','TARVDesde'],['tipoEsquemaTARV','TipoEsquemaTARV'],
     ['tarvDrogas','TARVDrogas'],
     ['tuvoTBPrevia','TuvoTBPrevia'],['completoTratamientoTBPrevia','CompletoTratamientoTBPrevia'],
-    ['tuvoTB','TuvoTB'],['situacionTB','SituacionTB'],['formaClinicaTB','FormaClinicaTB'],
+    ['tuvoTB','TuvoTB'],['formaClinicaTB','FormaClinicaTB'],
     ['confirmacionTB','ConfirmacionTB'],
-    ['tratamientoTB','TratamientoTB'],['esquemaTB','EsquemaTB'],['causaEsquemaTB','CausaEsquemaTB'],
+    ['esquemaTB','EsquemaTB'],['causaEsquemaTB','CausaEsquemaTB'],
     ['internacionPreviaOtroLugar','InternacionPreviaOtroLugar'],['tiempoInternacionPreviaOtroLugar','TiempoInternacionPreviaOtroLugar'],['internacionPreviaPorIO','InternacionPreviaPorIO'],
     ['antecedenteSifilis','AntecedenteSifilis'],['vdrl','VDRL'],['vdrlDilucion','VDRLDilucion'],
     ['comorbilidades','Comorbilidades'],
+    ['tieneAlergias','TieneAlergias'],['tipoReaccionAlergia','TipoReaccionAlergia'],['farmacoAlergia','FarmacoAlergia'],
     ['infeccionesIH','InfeccionesIH'],['rescateMicro','RescateMicro'],['germen','Germen'],
     ['sensibilidad','Sensibilidad'],['mecanismoResistencia','MecanismoResistencia'],
     ['trastornoAdiccion','TrastornoAdiccion'],
@@ -3357,6 +3563,7 @@ function setOfflineBanner(active, since, pendingWrite){
 function manualSync(){ saveState(); }
 
 let lastKnownServerBeds = null; // foto de camas tal como estaban en el servidor la última vez que se leyó con éxito
+let pendingMergeUTI = null; // {dni, cama, egreso} de un "Pase a UTI" a fusionar en el próximo guardado
 let lastKnownServerNotas = null; // ídem para notas
 async function loadState(){
   if(!backendConfigured()) return;
@@ -3421,7 +3628,7 @@ async function loadState(){
     }
   }
 }
-async function saveState(undoEgreso, completarClinico){
+async function saveState(undoEgreso, completarClinico, mergeUTI){
   if(!backendConfigured()) return;
 
   // Si todavía no tenemos una foto confirmada del servidor en esta sesión (puede pasar si se
@@ -3488,6 +3695,7 @@ async function saveState(undoEgreso, completarClinico){
   const payload = {beds, notas, conflictivos, historialAppend: pendingHistorialAppends, diagnosticosAppend: pendingDiagnosticosAppends, desenlaceUTIAppend: pendingDesenlaceUTIAppends};
   if(undoEgreso) payload.undoEgreso = undoEgreso;
   if(completarClinico) payload.completarClinico = completarClinico;
+  if(mergeUTI) payload.mergeUTI = mergeUTI;
   saveLocalCache({beds, historial, diagnosticosLog, notas, conflictivos, desenlacesUTI, pendingHistorialAppends, pendingDiagnosticosAppends, pendingDesenlaceUTIAppends}); // copia local completa, pase lo que pase con la conexión
   try{
     const res = await fetch(APPS_SCRIPT_URL, {
