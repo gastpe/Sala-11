@@ -309,7 +309,7 @@
   <div style="font-size:32px; font-weight:900; color:var(--teal-dark); text-transform:uppercase; letter-spacing:1px;">Sala 11</div>
   <p style="color:var(--ink-soft); font-size:14.5px; max-width:320px; margin:0;">Iniciá sesión con tu cuenta de Google para acceder a la vista de médicos.</p>
   <div id="googleSignInBtn"></div>
-  <p id="loginError" style="color:#C0392B; font-size:13px; font-weight:700; display:none; max-width:320px;"></p>
+  <p id="loginError" style="color:#C0392B; font-size:13px; font-weight:700; display:none; max-width:320px; white-space:pre-line;"></p>
   <a href="index.html" style="font-size:12.5px; color:var(--ink-soft); margin-top:10px;">← Volver a elegir vista</a>
 </div>
 
@@ -3618,7 +3618,7 @@ async function loadState(){
     // Si la respuesta no trae "historial", la sesión no fue reconocida como médico válido
     // (token vencido o inexistente) — pedir que inicie sesión de nuevo.
     if(data.historial === undefined){
-      mostrarPantallaLogin('Tu sesión expiró o no es válida. Iniciá sesión de nuevo para continuar.');
+      mostrarPantallaLogin('Tu sesión expiró o no es válida. Iniciá sesión de nuevo para continuar.' + (data._debugAuth ? '\n\nDetalle: ' + data._debugAuth : ''));
       return;
     }
     // A partir de acá tenemos la foto REAL y actual del servidor — beds y notas se reemplazan
