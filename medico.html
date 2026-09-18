@@ -405,11 +405,15 @@
           <select id="eventoTipo" style="width:100%; margin-bottom:6px; font-size:13px; padding:6px 8px;">
             <option value="Cumpleaños">🎂 Cumpleaños</option>
             <option value="Vacaciones">✈️ Vacaciones</option>
-            <option value="Congreso">🎤 Congreso</option>
+            <option value="Congreso">🧑‍🔬 Congreso</option>
             <option value="Simposio">🎓 Simposio</option>
             <option value="Charla">📢 Charla</option>
             <option value="Otro">📌 Otro</option>
           </select>
+          <label style="display:flex; align-items:center; gap:5px; font-size:12px; font-weight:600; margin-bottom:8px;">
+            <input type="checkbox" id="eventoRecurrente" style="width:auto;">
+            🔁 Se repite todos los años (cumpleaños, efemérides)
+          </label>
           <div style="display:flex; gap:6px;">
             <button type="button" class="btn ghost" style="flex:1; font-size:12px; padding:6px;" onclick="cancelarAgregarEvento()">Cancelar</button>
             <button type="button" class="btn" style="flex:1; font-size:12px; padding:6px;" onclick="confirmarAgregarEvento()">Guardar</button>
@@ -2941,7 +2945,7 @@ const STICKY_COLORS = [
   {bg:'#FFE0B8', tx:'#5C3A0F'}  // naranja
 ];
 /* ---------- Eventos y recordatorios (cumpleaños, vacaciones, congresos, etc.) ---------- */
-const EVENTO_ICONOS = { 'Cumpleaños':'🎂', 'Vacaciones':'✈️', 'Congreso':'🎤', 'Simposio':'🎓', 'Charla':'📢', 'Otro':'📌' };
+const EVENTO_ICONOS = { 'Cumpleaños':'🎂', 'Vacaciones':'✈️', 'Congreso':'🧑‍🔬', 'Simposio':'🎓', 'Charla':'📢', 'Otro':'📌' };
 const EVENTO_COLORES = {
   'Cumpleaños': {bg:'#FCE4EC', tx:'#AD1457', bd:'#EC407A'},
   'Vacaciones': {bg:'#E3F2FD', tx:'#1565C0', bd:'#42A5F5'},
@@ -2950,15 +2954,38 @@ const EVENTO_COLORES = {
   'Charla':     {bg:'#FFF3E0', tx:'#E65100', bd:'#FFA726'},
   'Otro':       {bg:'#F5F5F5', tx:'#546E7A', bd:'#90A4AE'}
 };
+function avanzarUnAnio(fechaISO){
+  const [y,m,d] = fechaISO.split('-').map(Number);
+  return (y+1) + '-' + String(m).padStart(2,'0') + '-' + String(d).padStart(2,'0');
+}
 function renderEventos(){
   const hoy = new Date(); hoy.setHours(0,0,0,0);
-  // Auto-limpieza: se sacan solos los que ya terminaron (fecha de fin, o de inicio si es de un solo día)
+  let cambio = false;
+
+  // Los recurrentes que ya pasaron se adelantan al año próximo (en vez de borrarse)
+  eventos = eventos.map(ev=>{
+    if(!ev.recurrente) return ev;
+    let fechaInicio = ev.fechaInicio || ev.fecha;
+    let fechaFin = ev.fechaFin || fechaInicio;
+    let guard = 0;
+    while(new Date(fechaFin+'T00:00:00') < hoy && guard < 20){
+      fechaInicio = avanzarUnAnio(fechaInicio);
+      fechaFin = avanzarUnAnio(fechaFin);
+      guard++;
+    }
+    if(fechaInicio !== (ev.fechaInicio||ev.fecha)) cambio = true;
+    return { ...ev, fechaInicio, fechaFin };
+  });
+
+  // Los NO recurrentes que ya terminaron se sacan solos
   const antes = eventos.length;
   eventos = eventos.filter(ev=>{
+    if(ev.recurrente) return true; // los recurrentes ya se adelantaron arriba, nunca se borran
     const fin = new Date((ev.fechaFin || ev.fechaInicio || ev.fecha) + 'T00:00:00');
     return fin >= hoy;
   });
-  if(eventos.length !== antes) saveState();
+  if(eventos.length !== antes) cambio = true;
+  if(cambio) saveState();
 
   const ordenados = [...eventos].sort((a,b)=> new Date(a.fechaInicio||a.fecha) - new Date(b.fechaInicio||b.fecha));
   const lista = document.getElementById('eventosLista');
@@ -3000,7 +3027,7 @@ function renderEventos(){
     return `
       <div style="background:${c.bg}; border:2px solid ${c.bd}; border-radius:12px; padding:9px 11px; margin:7px 0; ${urgente?'animation:pulseEvento 1.8s ease-in-out infinite;':''}">
         <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:6px;">
-          <div style="font-size:14px; font-weight:800; color:${c.tx}; line-height:1.3;">${EVENTO_ICONOS[ev.tipo]||'📌'} ${escInd(ev.titulo)}</div>
+          <div style="font-size:14px; font-weight:800; color:${c.tx}; line-height:1.3;">${EVENTO_ICONOS[ev.tipo]||'📌'} ${escInd(ev.titulo)}${ev.recurrente?' 🔁':''}</div>
           <button type="button" onclick="eliminarEvento('${ev.id}')" style="border:none; background:none; color:${c.tx}; opacity:.55; cursor:pointer; font-size:15px; padding:0 2px; flex-shrink:0;">✕</button>
         </div>
         <div style="font-size:11.5px; color:${c.tx}; opacity:.8; margin-top:2px;">${rangoTexto}</div>
@@ -3019,16 +3046,18 @@ function cancelarAgregarEvento(){
   document.getElementById('eventoTitulo').value = '';
   document.getElementById('eventoFecha').value = '';
   document.getElementById('eventoFechaFin').value = '';
+  document.getElementById('eventoRecurrente').checked = false;
 }
 function confirmarAgregarEvento(){
   const titulo = document.getElementById('eventoTitulo').value.trim();
   const fechaInicio = document.getElementById('eventoFecha').value;
   const fechaFinInput = document.getElementById('eventoFechaFin').value;
   const tipo = document.getElementById('eventoTipo').value;
+  const recurrente = document.getElementById('eventoRecurrente').checked;
   if(!titulo){ alert('Ingresá un título para el evento.'); return; }
   if(!fechaInicio){ alert('Elegí una fecha de inicio.'); return; }
   if(fechaFinInput && fechaFinInput < fechaInicio){ alert('La fecha de fin no puede ser anterior a la de inicio.'); return; }
-  eventos.push({ id: 'ev'+Date.now(), titulo, fechaInicio, fechaFin: fechaFinInput || fechaInicio, tipo });
+  eventos.push({ id: 'ev'+Date.now(), titulo, fechaInicio, fechaFin: fechaFinInput || fechaInicio, tipo, recurrente });
   cancelarAgregarEvento();
   renderEventos();
   saveState();
