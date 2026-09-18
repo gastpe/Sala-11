@@ -3850,7 +3850,13 @@ async function loadState(){
     }
   }
 }
-async function saveState(undoEgreso, completarClinico, mergeUTI){
+let saveStateQueue = Promise.resolve(); // encola los guardados para que nunca se pisen entre sí
+function saveState(undoEgreso, completarClinico, mergeUTI){
+  const p = saveStateQueue.then(() => saveStateInterno(undoEgreso, completarClinico, mergeUTI));
+  saveStateQueue = p.catch(()=>{}); // que un guardado fallido no trabe a los siguientes
+  return p;
+}
+async function saveStateInterno(undoEgreso, completarClinico, mergeUTI){
   if(!backendConfigured()) return;
 
   // Si todavía no tenemos una foto confirmada del servidor en esta sesión (puede pasar si se
