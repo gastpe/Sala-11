@@ -837,7 +837,7 @@ function renderFields(){
     `;
     if(b.status==='ocupada'){
       f.innerHTML += `<button type="button" class="btn" style="width:100%; margin-top:10px; background:var(--teal); border-color:var(--teal);" onclick="openResumenHC()">📄 Resumen de HC</button>`;
-      f.innerHTML += `<button type="button" class="btn ghost" style="width:100%; margin-top:8px; border-color:#2563AF; color:#2563AF;" onclick="startClinico()">📋 Datos clínicos</button>`;
+      f.innerHTML += `<button type="button" class="btn ghost" style="width:100%; margin-top:8px; border-color:#2563AF; color:#2563AF;" onclick="startClinico()">📋 Datos clínicos${(function(){const p=calcularProgresoDatosClinicos(b.patient.clinico);return ' ('+p.completadas+'/'+p.total+')';})()}</button>`;
       f.innerHTML += `<button type="button" class="btn ghost" style="width:100%; margin-top:8px; border-color:#2563AF; color:#2563AF;" onclick="startIndicaciones()">💊 Indicaciones médicas</button>`;
       f.innerHTML += `<button type="button" class="btn ghost" style="width:100%; margin-top:8px; border-color:#2563AF; color:#2563AF;" onclick="startPendientes()">📝 Pendientes${(function(){const p=b.patient.pendientes;if(!p)return '';let n=0;PENDIENTES_CATEGORIAS.forEach(c=>{(p[c.key]||[]).forEach(it=>{if(!it.hecho)n++;});});return n?' ('+n+')':'';})()}</button>`;
       f.innerHTML += `<button type="button" class="btn ghost" style="width:100%; margin-top:8px; border-color:var(--aisl-bd); color:var(--aisl-bd);" onclick="startMove()">🔀 Mudar a otra cama</button>`;
@@ -1025,8 +1025,9 @@ function confirmEgreso(){
   const patient = beds[id].patient;
   const c = patient.clinico || {};
 
-  if(!patient.clinico){
-    const seguir = confirm('⚠️ Todavía no cargaste los "Datos clínicos" de ' + patient.nombre + '.\n\n¿Confirmás el egreso igual? (después vas a poder completarlo desde "Buscar paciente")');
+  const prog = calcularProgresoDatosClinicos(c);
+  if(prog.faltantes.length){
+    const seguir = confirm('⚠️ Faltan secciones de "Datos clínicos" de ' + patient.nombre + ':\n\n' + prog.faltantes.map(f=>'• '+f).join('\n') + '\n\n¿Confirmás el egreso igual? (después vas a poder completarlo desde "Buscar paciente")');
     if(!seguir) return;
   }
 
@@ -1156,7 +1157,20 @@ function startClinico(){
   existing.forEach(entry => addDiagEntry(entry));
 }
 function renderClinicoFormHTML(c){
+  const prog = calcularProgresoDatosClinicos(c);
+  const pct = Math.round((prog.completadas / prog.total) * 100);
+  const colorBarra = pct===100 ? 'var(--libre-bd)' : (pct>=50 ? 'var(--aisl-bd)' : 'var(--rot-bd)');
   return `
+    <div style="background:#F4F6F7; border-radius:10px; padding:10px 12px; margin-bottom:14px;">
+      <div style="display:flex; justify-content:space-between; align-items:center; font-size:12.5px; font-weight:700; color:var(--ink-soft); margin-bottom:5px;">
+        <span>Progreso del formulario</span>
+        <span>${prog.completadas} / ${prog.total} secciones</span>
+      </div>
+      <div style="background:#DCE0E2; border-radius:6px; height:8px; overflow:hidden;">
+        <div style="background:${colorBarra}; width:${pct}%; height:100%; border-radius:6px; transition:width .3s;"></div>
+      </div>
+      ${prog.faltantes.length ? `<div style="font-size:11.5px; color:var(--ink-soft); margin-top:6px;">Faltan: ${prog.faltantes.join(', ')}</div>` : `<div style="font-size:11.5px; color:var(--libre-tx); margin-top:6px; font-weight:700;">✓ Todas las secciones tienen algo cargado</div>`}
+    </div>
     <details class="ind-details">
       <summary>1. Datos Personales</summary>
       <div class="ind-details-body">
@@ -2128,6 +2142,23 @@ function closeResumenHC(){ document.getElementById('resumenHCOverlay').classList
 function imprimirResumenHCAhora(){
   document.body.classList.add('print-mode');
   window.print();
+}
+
+/* ---------- Progreso de Datos clínicos, por sección (no por campo) ---------- */
+const SECCIONES_CLINICO = [
+  {nombre:'Datos Personales', check: c => !!(c.fechaNacimiento || c.nacionalidad || c.situacionVivienda)},
+  {nombre:'VIH', check: c => !!(c.diagnosticoVIH || c.cd4 || c.cv || c.tarv)},
+  {nombre:'Coinfecciones y serologías', check: c => !!(c.vhb || c.vhc || c.otraCoinfeccion || c.antecedenteSifilis || c.vdrl)},
+  {nombre:'Tuberculosis', check: c => !!(c.tuvoTBPrevia || c.tuvoTB)},
+  {nombre:'Comorbilidades', check: c => !!((c.comorbilidades && c.comorbilidades.length) || c.comorbilidadesOtras || c.tieneAlergias)},
+  {nombre:'Infecciones intrahospitalarias', check: c => !!c.tuvoIIH},
+  {nombre:'Diagnósticos de esta internación', check: c => !!(c.diagnosticos && c.diagnosticos.some(d=>d.categoria))},
+  {nombre:'Evolución', check: c => !!(c.evolucion && c.evolucion.trim())}
+];
+function calcularProgresoDatosClinicos(clinico){
+  const c = clinico || {};
+  const faltantes = SECCIONES_CLINICO.filter(s=>!s.check(c)).map(s=>s.nombre);
+  return { completadas: SECCIONES_CLINICO.length - faltantes.length, total: SECCIONES_CLINICO.length, faltantes };
 }
 
 function startPendientes(){
