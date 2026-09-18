@@ -1122,6 +1122,20 @@ function confirmEgreso(){
     pendingDiagnosticosAppends.push(diagTB);
     diagEntriesDeEsteEgreso.push(diagTB);
   }
+  // Cada infección intrahospitalaria cargada también cuenta como diagnóstico de esta internación
+  (c.infeccionesIHDetalle || []).forEach(iih=>{
+    if(!iih.tipo) return;
+    const diagIIH = {
+      dni: patient.dni, nombre: patient.nombre, cama: id, egreso: fecha,
+      categoria: iih.tipo,
+      estado: 'Confirmado',
+      tratamiento: '',
+      fechaInicioTratamiento: iih.fechaInicioTratamiento || '', fechaFinTratamiento: iih.fechaFinTratamiento || ''
+    };
+    diagnosticosLog.push(diagIIH);
+    pendingDiagnosticosAppends.push(diagIIH);
+    diagEntriesDeEsteEgreso.push(diagIIH);
+  });
 
   if(document.getElementById('fMarcarConflictivo').checked){
     const motivosSeleccionados = [...document.querySelectorAll('.conflMotivoCheck:checked')].map(el=>el.value);
@@ -1155,6 +1169,10 @@ function startClinico(){
   activeDiagIndexes = [];
   const existing = (c.diagnosticos && c.diagnosticos.length) ? c.diagnosticos : [null];
   existing.forEach(entry => addDiagEntry(entry));
+  iihCounter = 0;
+  activeIIHIndexes = [];
+  const existingIIH = (c.infeccionesIHDetalle && c.infeccionesIHDetalle.length) ? c.infeccionesIHDetalle : [null];
+  existingIIH.forEach(entry => addIIHEntry(entry));
 }
 function renderClinicoFormHTML(c){
   const prog = calcularProgresoDatosClinicos(c);
@@ -1405,11 +1423,8 @@ function renderClinicoFormHTML(c){
       </select>
     </div>
     <div id="iihDetalleWrap" style="${c.tuvoIIH==='Sí'?'':'display:none;'}">
-      <div class="field"><label>¿Cuál(es)?</label>
-        <div style="display:flex; flex-wrap:wrap; gap:6px;">
-          ${IIH_OPCIONES.map(op=>`<label style="display:flex; align-items:center; gap:4px; font-size:14.2px; font-weight:600; color:var(--ink); border:1px solid var(--line); border-radius:6px; padding:5px 8px;"><input type="checkbox" class="iihCheck" value="${op}" ${(c.infeccionesIH||[]).includes(op)?'checked':''} style="width:auto;">${op}</label>`).join('')}
-        </div>
-      </div>
+      <div id="iihContainer"></div>
+      <button type="button" class="btn ghost" style="width:100%; margin-bottom:14px;" onclick="addIIHEntry()">+ Agregar infección</button>
       <div class="field"><label>¿Hubo rescate microbiológico?</label>
         <select id="cRescateMicro" onchange="toggleRescateDetalle()">
           <option value="" ${!c.rescateMicro?'selected':''}>-- Elegir --</option>
@@ -1477,6 +1492,35 @@ const TIEMPO_DX_OPCIONES = ['6-12 meses','1 a 5 años','5 a 10 años','Más de 1
 const TARV_DROGAS_OPCIONES = ['Tenofovir disoproxil (TDF)','Tenofovir alafenamida (TAF)','Emtricitabina (FTC)','Lamivudina (3TC)','Dolutegravir (DTG)','Bictegravir (BIC)','Raltegravir (RAL)','Efavirenz (EFV)','Darunavir/ritonavir (DRV/r)'];
 const TIPO_ESQUEMA_TARV_OPCIONES = ['Clásico (2 análogos + tercera droga)','Biterapia','Fallo virológico - ajustado a test de resistencia','Fallo virológico - a ciegas (empírico)'];
 const TIEMPO_INTERNACION_PREVIA_OPCIONES = ['Menos de 1 mes','1 a 3 meses','3 a 6 meses','6 a 12 meses','Más de 1 año','No sabe'];
+let iihCounter = 0;
+let activeIIHIndexes = [];
+function renderIIHEntryBlock(entry, idx){
+  entry = entry || {tipo:'', fechaInicioTratamiento:'', fechaFinTratamiento:''};
+  return `
+    <div class="diag-entry" id="iihEntry_${idx}" style="border:1px solid var(--line); border-radius:10px; padding:10px; margin-bottom:10px;">
+      <div class="field"><label>Tipo de infección</label>
+        <select id="iihTipo_${idx}">
+          <option value="" ${entry.tipo===''?'selected':'disabled'}>-- Elegir --</option>
+          ${IIH_OPCIONES.map(op=>`<option value="${op}" ${entry.tipo===op?'selected':''}>${op}</option>`).join('')}
+        </select>
+      </div>
+      <div class="field"><label>Fecha de inicio de tratamiento</label><input type="date" id="iihFechaInicio_${idx}" value="${entry.fechaInicioTratamiento||''}"></div>
+      <div class="field"><label>Fecha de finalización</label><input type="date" id="iihFechaFin_${idx}" value="${entry.fechaFinTratamiento||''}"></div>
+      <button type="button" class="btn ghost" style="width:100%; border-color:var(--rot-bd); color:var(--rot-bd);" onclick="removeIIHEntry(${idx})">Quitar esta infección</button>
+    </div>
+  `;
+}
+function addIIHEntry(existingEntry){
+  const container = document.getElementById('iihContainer');
+  const idx = iihCounter++;
+  container.insertAdjacentHTML('beforeend', renderIIHEntryBlock(existingEntry, idx));
+  activeIIHIndexes.push(idx);
+}
+function removeIIHEntry(idx){
+  const el = document.getElementById('iihEntry_'+idx);
+  if(el) el.remove();
+  activeIIHIndexes = activeIIHIndexes.filter(i=>i!==idx);
+}
 function toggleIIHDetalle(){
   document.getElementById('iihDetalleWrap').style.display = document.getElementById('cTuvoIIH').value==='Sí' ? '' : 'none';
 }
@@ -1635,7 +1679,12 @@ function saveClinico(){
   }));
   const comorbilidades = [...document.querySelectorAll('.comorbCheck:checked')].map(el=>el.value);
   const tuvoIIH = document.getElementById('cTuvoIIH').value;
-  const infeccionesIH = tuvoIIH==='Sí' ? [...document.querySelectorAll('.iihCheck:checked')].map(el=>el.value) : [];
+  const infeccionesIHDetalle = tuvoIIH==='Sí' ? activeIIHIndexes.map(idx=>({
+    tipo: document.getElementById('iihTipo_'+idx).value,
+    fechaInicioTratamiento: document.getElementById('iihFechaInicio_'+idx).value,
+    fechaFinTratamiento: document.getElementById('iihFechaFin_'+idx).value
+  })).filter(e=>e.tipo) : [];
+  const infeccionesIH = infeccionesIHDetalle.map(e=>e.tipo);
   const rescateMicro = tuvoIIH==='Sí' ? document.getElementById('cRescateMicro').value : 'No';
   const germen = rescateMicro==='Sí' ? document.getElementById('cGermen').value : '';
   const mecanismoResistencia = rescateMicro==='Sí' ? [...document.querySelectorAll('.mecanismoCheck:checked')].map(el=>el.value) : [];
@@ -1681,7 +1730,7 @@ function saveClinico(){
     tieneAlergias: document.getElementById('cTieneAlergias').value,
     tipoReaccionAlergia: document.getElementById('cTieneAlergias').value==='Sí' ? document.getElementById('cTipoReaccionAlergia').value : '',
     farmacoAlergia: document.getElementById('cTieneAlergias').value==='Sí' ? document.getElementById('cFarmacoAlergia').value.trim() : '',
-    tuvoIIH, infeccionesIH, rescateMicro, germen, sensibilidad, mecanismoResistencia,
+    tuvoIIH, infeccionesIH, infeccionesIHDetalle, rescateMicro, germen, sensibilidad, mecanismoResistencia,
     trastornoAdiccion: comorbilidades.includes('Trastorno de adicción a drogas psicoactivas') ? 'Sí' : 'No',
     diagnosticos,
     pasoPorUTI: document.getElementById('cPasoPorUTI').checked ? 'Sí' : 'No',
@@ -1752,6 +1801,18 @@ function saveClinico(){
       diagnosticosLog.push(diagTB);
       pendingDiagnosticosAppends.push(diagTB);
     }
+    (clinico.infeccionesIHDetalle || []).forEach(iih=>{
+      if(!iih.tipo) return;
+      const diagIIH = {
+        dni, nombre: clinicoRetroInfo.nombre, cama, egreso,
+        categoria: iih.tipo,
+        estado: 'Confirmado',
+        tratamiento: '',
+        fechaInicioTratamiento: iih.fechaInicioTratamiento || '', fechaFinTratamiento: iih.fechaFinTratamiento || ''
+      };
+      diagnosticosLog.push(diagIIH);
+      pendingDiagnosticosAppends.push(diagIIH);
+    });
 
     // Sacar la notita de "falta completar" de la pizarra, si existía
     notas = notas.filter(n => !(n.tipo==='clinicoFaltante' && n.dni===dni && n.cama===cama && n.egreso===egreso));
@@ -2065,6 +2126,16 @@ function obtenerDiagnosticosParaResumen(c){
       fechaFinTratamiento: c.tbFechaFinTratamiento||''
     });
   }
+  (c.infeccionesIHDetalle||[]).forEach(iih=>{
+    if(!iih.tipo) return;
+    lista.push({
+      categoria: iih.tipo,
+      estado: 'Confirmado',
+      tratamiento: '',
+      fechaInicioTratamiento: iih.fechaInicioTratamiento||'',
+      fechaFinTratamiento: iih.fechaFinTratamiento||''
+    });
+  });
   return lista;
 }
 function buildResumenHCHTML(patient){
