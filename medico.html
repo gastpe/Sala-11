@@ -813,6 +813,17 @@ function renderFields(){
     const isIso = isolationBeds.some(x=>x.id===currentBed);
     f.innerHTML = `
       <div class="field"><label>Nombre y apellido</label><input id="fNombre" value="${p.nombre||''}" oninput="this.value=this.value.toUpperCase()" style="text-transform:uppercase;"></div>
+      <div class="field"><label>Tipo de documento</label>
+        <select id="fTipoDocumento">
+          <option value="DNI" ${(p.tipoDocumento||'DNI')==='DNI'?'selected':''}>DNI (Argentina)</option>
+          <option value="Cédula (Brasil)" ${p.tipoDocumento==='Cédula (Brasil)'?'selected':''}>Cédula (Brasil)</option>
+          <option value="Cédula (Perú)" ${p.tipoDocumento==='Cédula (Perú)'?'selected':''}>Cédula (Perú)</option>
+          <option value="Cédula (Bolivia)" ${p.tipoDocumento==='Cédula (Bolivia)'?'selected':''}>Cédula (Bolivia)</option>
+          <option value="Cédula (Paraguay)" ${p.tipoDocumento==='Cédula (Paraguay)'?'selected':''}>Cédula (Paraguay)</option>
+          <option value="Pasaporte" ${p.tipoDocumento==='Pasaporte'?'selected':''}>Pasaporte</option>
+          <option value="Otro" ${p.tipoDocumento==='Otro'?'selected':''}>Otro</option>
+        </select>
+      </div>
       <div class="field"><label>DNI</label><input id="fDni" value="${p.dni||''}" onblur="checkDniHistory()"></div>
       <div class="field"><label>Médico a cargo</label>
         <select id="fMedico">
@@ -923,10 +934,11 @@ function saveBed(){
   } else if(pendingStatus==='ocupada'){
     const existing = beds[id].patient;
     const nombre = document.getElementById('fNombre').value.trim();
+    const tipoDocumento = document.getElementById('fTipoDocumento').value;
     const dni = document.getElementById('fDni').value.trim();
     if(!nombre){ alert('Ingresá el nombre del paciente.'); return; }
-    if(!dni){ alert('Ingresá el DNI del paciente.'); return; }
-    if(!/^\d{6,9}$/.test(dni)){
+    if(!dni){ alert('Ingresá el número de documento del paciente.'); return; }
+    if(tipoDocumento==='DNI' && !/^\d{6,9}$/.test(dni)){
       if(!confirm('El DNI "'+dni+'" no parece válido (se esperan entre 6 y 9 números, sin puntos). ¿Guardar igual?')) return;
     }
 
@@ -951,7 +963,7 @@ function saveBed(){
     const clinicoInicial = entradaUTI
       ? { evolucion: '📌 Pasó por UTI desde el ' + entradaUTI.egreso + ' hasta el ' + new Date().toLocaleDateString('es-AR') + ' (regresó a sala).' }
       : (existing && existing.clinico);
-    beds[id] = { status:'ocupada', patient:{ nombre, dni, medico, obraSocial, aislamiento, procedencia, fechaIngresoHospital, fechaIngresoSala, clinico: clinicoInicial, indicaciones: existing && existing.indicaciones, pendientes: existing && existing.pendientes } };
+    beds[id] = { status:'ocupada', patient:{ nombre, dni, tipoDocumento, medico, obraSocial, aislamiento, procedencia, fechaIngresoHospital, fechaIngresoSala, clinico: clinicoInicial, indicaciones: existing && existing.indicaciones, pendientes: existing && existing.pendientes } };
 
     if(entradaUTI){
       // Fusionar: sacar la fila de "Pase a UTI" del historial (local y en la planilla) y cerrar la notita de seguimiento.
@@ -1038,7 +1050,7 @@ function confirmEgreso(){
   }
 
   const historialEntry = {
-    dni: patient.dni, nombre: patient.nombre, cama: id, medico: patient.medico || '', obraSocial: patient.obraSocial ? 'Sí' : 'No', procedencia: patient.procedencia || '',
+    dni: patient.dni, tipoDocumento: patient.tipoDocumento || 'DNI', nombre: patient.nombre, cama: id, medico: patient.medico || '', obraSocial: patient.obraSocial ? 'Sí' : 'No', procedencia: patient.procedencia || '',
     fechaNacimiento: c.fechaNacimiento || '', edad: c.edad || '',
     nacionalidad: (c.nacionalidad==='Otro' ? (c.nacionalidadOtra||'Otro') : c.nacionalidad) || '',
     situacionVivienda: c.situacionVivienda || '',
@@ -2897,7 +2909,7 @@ function confirmRetro(){
   const comoSeEntero = document.getElementById('rComoSeEntero').value.trim();
 
   const entry = {
-    dni, nombre, cama: cama || '(no especificada)', medico: '', obraSocial: 'No', procedencia: '',
+    dni, tipoDocumento: 'DNI', nombre, cama: cama || '(no especificada)', medico: '', obraSocial: 'No', procedencia: '',
     fechaNacimiento: '', edad: '', nacionalidad: '', situacionVivienda: '',
     ingresoHospital: '',
     ingresoSala: fIS ? isoToEsAr(fIS) : '(sin fecha)',
@@ -3312,7 +3324,7 @@ function csvEscape(v){
 function exportarHistorialCSV(){
   if(!ultimosEpisodiosFiltrados.length){ alert('No hay egresos en este período para exportar.'); return; }
   const cols = [
-    ['dni','DNI'],['nombre','Nombre'],['cama','Cama'],['medico','Medico'],['obraSocial','ObraSocial'],
+    ['dni','DNI'],['tipoDocumento','TipoDocumento'],['nombre','Nombre'],['cama','Cama'],['medico','Medico'],['obraSocial','ObraSocial'],
     ['procedencia','Procedencia'],['fechaNacimiento','FechaNacimiento'],['edad','Edad'],['nacionalidad','Nacionalidad'],['situacionVivienda','SituacionCalle'],
     ['ingresoHospital','IngresoHospital'],['ingresoSala','IngresoSala'],
     ['diagnosticoVIH','DiagnosticoVIH'],['tiempoDxVIH','TiempoDxVIH'],['cd4','CD4'],['cv','CV'],['coinfecciones','Coinfecciones'],
