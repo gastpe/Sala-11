@@ -1466,7 +1466,7 @@ function renderClinicoFormHTML(c){
       <div class="ind-details-body">
     <div class="field">
       <label style="display:flex; align-items:center; gap:6px; font-weight:600;">
-        <input type="checkbox" id="cPasoPorUTI" ${c.pasoPorUTI==='Sí'?'checked':''} onchange="toggleNotaPasoPorUTI()" style="width:auto;">
+        <input type="checkbox" id="cPasoPorUTI" ${c.pasoPorUTI==='Sí'?'checked':''} style="width:auto;">
         ¿Pasó por UTI durante esta internación? (haya vuelto o no)
       </label>
     </div>
@@ -1578,15 +1578,6 @@ function toggleTiempoDxVIH(){
 }
 function toggleAlergiasDetalle(){
   document.getElementById('alergiasDetalleWrap').style.display = document.getElementById('cTieneAlergias').value==='Sí' ? '' : 'none';
-}
-function toggleNotaPasoPorUTI(){
-  const chk = document.getElementById('cPasoPorUTI');
-  if(!chk.checked) return;
-  const textarea = document.getElementById('cEvolucion');
-  const frase = '📌 PASÓ POR UTI DURANTE ESTA INTERNACIÓN.';
-  if(!textarea.value.toUpperCase().includes(frase)){
-    textarea.value = frase + (textarea.value ? '\n' + textarea.value : '');
-  }
 }
 function toggleTBDetalle(){
   const show = document.getElementById('cTuvoTB').value==='Sí';
