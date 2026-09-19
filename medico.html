@@ -2640,12 +2640,12 @@ window.addEventListener('afterprint', ()=> {
 /* ---------- Revisión matutina ---------- */
 const CHART_COLORS = ['#0B5E59','#2563AF','#B9821D','#C0392B','#6E4FA0','#2E7D5B','#8A611A','#1B4C86'];
 
-function renderDonutChart(containerId, dataMap, colorMap, chipLegend){
+function renderDonutChart(containerId, dataMap, colorMap, chipLegend, pie){
   const entries = Object.entries(dataMap);
   const total = entries.reduce((s,[,v])=>s+v,0);
   const el = document.getElementById(containerId);
   if(!total){ el.innerHTML = '<p style="color:var(--ink-soft); font-size:15.3px;">Sin datos por ahora.</p>'; return; }
-  const radius = 48, cx = 72, cy = 72, sw = 22;
+  const radius = pie ? 36 : 48, cx = 72, cy = 72, sw = pie ? 72 : 22;
   const circumference = 2*Math.PI*radius;
   let acc = 0;
   let arcs = '';
@@ -3251,18 +3251,16 @@ const REPORT_SECCIONES = [
   {key:'salaActualCalle', label:'Situación de calle', grupo:'actual'},
   {key:'salaActualEdad', label:'Rango de edades', grupo:'actual'},
   {key:'salaActualTransmision', label:'Transmisión VIH (vertical/crónico/reciente)', grupo:'actual'},
-  {key:'salaActualDiagnosticos', label:'Diagnósticos más frecuentes', grupo:'actual'},
   {key:'salaActualOportunistas', label:'Oportunistas vs. no oportunistas', grupo:'actual'},
-  {key:'salaActualSifilis', label:'Sífilis diagnosticada en la internación', grupo:'actual'},
   {key:'salaActualTB', label:'Detalle de tuberculosis', grupo:'actual'},
-  {key:'salaActualIIH', label:'Frecuencia de IIH', grupo:'actual'},
-  {key:'salaActualGermenes', label:'Prevalencia de gérmenes', grupo:'actual'},
 
   {key:'motivos', label:'Motivos de egreso', grupo:'periodo'},
   {key:'diagnosticos', label:'Diagnósticos más frecuentes', grupo:'periodo'},
   {key:'oportunistasPeriodo', label:'Oportunistas vs. no oportunistas', grupo:'periodo'},
   {key:'sifilisPeriodo', label:'Sífilis diagnosticada en la internación', grupo:'periodo'},
+  {key:'vdrlInterpretacionPeriodo', label:'Interpretación de VDRL positivas', grupo:'periodo'},
   {key:'tbPeriodo', label:'Detalle de tuberculosis', grupo:'periodo'},
+  {key:'tbPreviaPeriodo', label:'Tuberculosis previa y tratamiento previo', grupo:'periodo'},
   {key:'edadPeriodo', label:'Rango de edades', grupo:'periodo'},
   {key:'medicos', label:'Giro-cama por médico', grupo:'periodo'},
   {key:'reinternacionPeriodo', label:'Primera vez vs. reinternación', grupo:'periodo'},
@@ -3272,7 +3270,11 @@ const REPORT_SECCIONES = [
   {key:'indicadoresClave', label:'Indicadores clave (%)', grupo:'periodo'},
   {key:'promedios', label:'Promedios (CD4, IOs)', grupo:'periodo'},
   {key:'frecuenciaIIH', label:'Frecuencia de IIH', grupo:'periodo'},
-  {key:'prevalenciaGermenes', label:'Prevalencia de gérmenes', grupo:'periodo'}
+  {key:'prevalenciaGermenes', label:'Prevalencia de gérmenes', grupo:'periodo'},
+  {key:'alergiasPeriodo', label:'Alergias registradas', grupo:'periodo'},
+  {key:'nacionalidadPeriodo', label:'Nacionalidad', grupo:'periodo'},
+  {key:'duracionTratamientoPeriodo', label:'Días de tratamiento por diagnóstico', grupo:'periodo'},
+  {key:'desenlaceUTIPeriodo', label:'Desenlace de los pases a UTI', grupo:'periodo'}
 ];
 function getSeccionesElegidas(){
   let guardadas = null;
@@ -3615,6 +3617,57 @@ function renderReportes(){
   let cantPrimeraVez = 0, cantReinternacion = 0;
   episodios.forEach(ep=>{ if(esReinternacion(ep)) cantReinternacion++; else cantPrimeraVez++; });
 
+  // Alergias registradas — sobre los egresos del período
+  const conAlergia = episodios.filter(h=>h.tieneAlergias==='Sí');
+  const pctAlergias = totalEgresos ? Math.round((conAlergia.length/totalEgresos)*1000)/10 : 0;
+  const tipoReaccionCounts = {};
+  conAlergia.forEach(h=>{ if(h.tipoReaccionAlergia){ tipoReaccionCounts[h.tipoReaccionAlergia] = (tipoReaccionCounts[h.tipoReaccionAlergia]||0)+1; } });
+
+  // Nacionalidad — sobre los egresos del período
+  const nacionalidadCounts = {};
+  episodios.forEach(h=>{ if(h.nacionalidad){ nacionalidadCounts[h.nacionalidad] = (nacionalidadCounts[h.nacionalidad]||0)+1; } });
+  const topNacionalidad = Object.entries(nacionalidadCounts).sort((a,b)=>b[1]-a[1]);
+
+  // Interpretación de VDRL, solo de las positivas del período
+  const vdrlPositivas = episodios.filter(h=>h.vdrl==='Positiva');
+  const vdrlInterpretacionCounts = {};
+  vdrlPositivas.forEach(h=>{ if(h.vdrlInterpretacion){ vdrlInterpretacionCounts[h.vdrlInterpretacion] = (vdrlInterpretacionCounts[h.vdrlInterpretacion]||0)+1; } });
+
+  // Tuberculosis previa y si completó el tratamiento previo — sobre los egresos del período
+  const conTBPrevia = episodios.filter(h=>h.tuvoTBPrevia==='Sí');
+  const pctTBPrevia = totalEgresos ? Math.round((conTBPrevia.length/totalEgresos)*1000)/10 : 0;
+  const tbPreviaCompletoCount = conTBPrevia.filter(h=>h.completoTratamientoTBPrevia==='Sí').length;
+  const tbPreviaAbandonoCount = conTBPrevia.filter(h=>h.completoTratamientoTBPrevia==='No').length;
+
+  // Días de tratamiento por diagnóstico — promedio, usando los diagnósticos del período que tienen ambas fechas
+  const duracionPorDiag = {};
+  diagsEnRango.forEach(d=>{
+    if(!d.fechaInicioTratamiento || !d.fechaFinTratamiento) return;
+    const ini = new Date(d.fechaInicioTratamiento+'T00:00:00');
+    const fin = new Date(d.fechaFinTratamiento+'T00:00:00');
+    const dias = Math.round((fin-ini)/86400000)+1;
+    if(dias < 0) return;
+    const cat = d.categoria||'(sin especificar)';
+    duracionPorDiag[cat] = duracionPorDiag[cat] || {suma:0, n:0};
+    duracionPorDiag[cat].suma += dias;
+    duracionPorDiag[cat].n++;
+  });
+  const promDuracionPorDiag = Object.entries(duracionPorDiag).map(([cat,v])=>[cat, Math.round((v.suma/v.n)*10)/10]).sort((a,b)=>b[1]-a[1]);
+
+  // Desenlace de los pases a UTI del período. OJO: si el paciente volvió a Sala 11, ese episodio se
+  // fusiona con el actual y esta fila de "Pase a UTI" deja de existir — por eso acá NO se puede
+  // contar "volvió a la sala", solo lo que sigue confirmado como desenlace final en UTI.
+  const pasesUTIPeriodo = episodios.filter(h=>h.motivoEgreso==='Pase a UTI');
+  const utiFallecidos = pasesUTIPeriodo.filter(h=>{
+    const d = desenlacesUTI.find(x=>x.dni===h.dni && x.cama===h.cama && x.egreso===h.egreso);
+    return d && d.desenlace==='Falleció en UTI';
+  }).length;
+  const utiVive = pasesUTIPeriodo.filter(h=>{
+    const d = desenlacesUTI.find(x=>x.dni===h.dni && x.cama===h.cama && x.egreso===h.egreso);
+    return d && d.desenlace==='Vive';
+  }).length;
+  const utiPendiente = pasesUTIPeriodo.length - utiFallecidos - utiVive;
+
   const elegidas = getSeccionesElegidas();
   const incluye = key => elegidas.includes(key);
 
@@ -3642,18 +3695,9 @@ function renderReportes(){
       <h4 style="font-size:14.5px; color:var(--teal-dark); margin:14px 0 8px;">TRANSMISIÓN VIH: VERTICAL / CRÓNICO / RECIENTE</h4>
       <div id="chartTransmisionActual" style="margin-bottom:6px;"></div>` : ''}
 
-      ${incluye('salaActualDiagnosticos') ? `
-      <h4 style="font-size:14.5px; color:var(--teal-dark); margin:14px 0 8px;">DIAGNÓSTICOS MÁS FRECUENTES</h4>
-      <div id="chartDiagActual" style="margin-bottom:6px;"></div>` : ''}
-
       ${incluye('salaActualOportunistas') ? `
       <h4 style="font-size:14.5px; color:var(--teal-dark); margin:14px 0 8px;">OPORTUNISTAS VS. NO OPORTUNISTAS</h4>
       <div id="chartOportunistasActual" style="margin-bottom:6px;"></div>` : ''}
-
-      ${incluye('salaActualSifilis') ? `
-      <h4 style="font-size:14.5px; color:var(--teal-dark); margin:14px 0 8px;">SÍFILIS DIAGNOSTICADA EN LA INTERNACIÓN</h4>
-      <p class="sub-h" style="margin-bottom:6px;">Sin antecedente conocido + VDRL positiva.</p>
-      <div id="chartSifilisActual" style="margin-bottom:6px;"></div>` : ''}
 
       ${incluye('salaActualTB') ? `
       <h4 style="font-size:14.5px; color:var(--teal-dark); margin:14px 0 8px;">TUBERCULOSIS: EMPÍRICO VS. DIRIGIDO</h4>
@@ -3662,14 +3706,6 @@ function renderReportes(){
       <div id="chartTBSitioActual" style="margin-bottom:12px;"></div>
       <h4 style="font-size:14.5px; color:var(--teal-dark); margin:14px 0 8px;">TUBERCULOSIS DISEMINADA (MÁS DE 2 SITIOS)</h4>
       <div id="chartTBDiseminadaActual" style="margin-bottom:6px;"></div>` : ''}
-
-      ${incluye('salaActualIIH') ? `
-      <h4 style="font-size:14.5px; color:var(--teal-dark); margin:14px 0 8px;">FRECUENCIA DE INFECCIONES INTRAHOSPITALARIAS</h4>
-      <div id="chartIIHActual" style="margin-bottom:6px;"></div>` : ''}
-
-      ${incluye('salaActualGermenes') ? `
-      <h4 style="font-size:14.5px; color:var(--teal-dark); margin:14px 0 8px;">PREVALENCIA DE GÉRMENES</h4>
-      <div id="chartGermenesActual"></div>` : ''}
     </div>` : ''}
 
     ${modoReporte==='periodo' ? `
@@ -3681,10 +3717,6 @@ function renderReportes(){
       <div class="stat" style="${mortalidad>0?'border-color:var(--rot-bd);':''}"><div class="n" style="${mortalidad>0?'color:var(--rot-bd);':''}">${mortalidad}%</div><div class="l">Mortalidad conocida (Sala 11 + UTI confirmada)</div></div>
     </div>
     ${utiSinConfirmar>0 ? `<div class="alert-box" style="margin-bottom:22px;">ℹ️ Hay <strong>${utiSinConfirmar}</strong> pase(s) a UTI en este período sin desenlace confirmado todavía — la mortalidad real puede ser mayor. Actualizalos desde "🔍 Buscar paciente".</div>` : ''}
-    <div class="stat" style="width:100%; margin-bottom:22px; ${noEvaluados>0?'border-color:var(--rot-bd);':''}">
-      <div class="n" style="${noEvaluados>0?'color:var(--rot-bd);':''}">${noEvaluados}</div>
-      <div class="l">Ingresos/egresos sin evaluar por el equipo (fuera de horario)</div>
-    </div>
 
     ${incluye('indicadoresClave') ? `
     <h3 style="font-size:16.5px; color:var(--teal-dark); margin-bottom:10px;">INDICADORES CLAVE DEL PERÍODO (EGRESOS)</h3>
@@ -3750,6 +3782,35 @@ function renderReportes(){
     <p style="font-size:15.3px; margin-bottom:4px;"><strong>${reinternados.length}</strong> paciente(s) con más de una internación registrada.</p>
     <p style="font-size:15.3px; color:var(--rot-tx);"><strong>${conFugaPrevia.length}</strong> de ellos reingresaron después de una fuga/contra opinión médica (posible abandono de tratamiento).</p>` : ''}
 
+    ${incluye('alergiasPeriodo') ? `
+    <h3 style="font-size:16.5px; color:var(--teal-dark); margin-bottom:10px;">ALERGIAS REGISTRADAS (EGRESOS)</h3>
+    <div id="chartAlergiasPct" style="margin-bottom:10px;"></div>
+    ${Object.keys(tipoReaccionCounts).length ? `<div id="chartAlergiasTipo" style="margin-bottom:6px;"></div>` : ''}` : ''}
+
+    ${incluye('nacionalidadPeriodo') ? `
+    <h3 style="font-size:16.5px; color:var(--teal-dark); margin-bottom:10px;">NACIONALIDAD (EGRESOS)</h3>
+    <div id="chartNacionalidad" style="margin-bottom:6px;"></div>` : ''}
+
+    ${incluye('vdrlInterpretacionPeriodo') ? `
+    <h3 style="font-size:16.5px; color:var(--teal-dark); margin-bottom:2px;">INTERPRETACIÓN DE VDRL POSITIVAS (EGRESOS)</h3>
+    <p class="sub-h" style="margin-bottom:6px;">Sobre ${vdrlPositivas.length} egreso(s) con VDRL positiva en el período.</p>
+    <div id="chartVDRLInterpretacion" style="margin-bottom:6px;"></div>` : ''}
+
+    ${incluye('tbPreviaPeriodo') ? `
+    <h3 style="font-size:16.5px; color:var(--teal-dark); margin-bottom:10px;">TUBERCULOSIS PREVIA Y TRATAMIENTO PREVIO (EGRESOS)</h3>
+    <div id="chartTBPreviaPct" style="margin-bottom:10px;"></div>
+    ${conTBPrevia.length ? `<div id="chartTBPreviaTratamiento" style="margin-bottom:6px;"></div>` : ''}` : ''}
+
+    ${incluye('duracionTratamientoPeriodo') ? `
+    <h3 style="font-size:16.5px; color:var(--teal-dark); margin-bottom:2px;">DÍAS DE TRATAMIENTO POR DIAGNÓSTICO (EGRESOS)</h3>
+    <p class="sub-h" style="margin-bottom:6px;">Promedio de días, solo diagnósticos con fecha de inicio y fin cargadas.</p>
+    <div id="chartDuracionTratamiento" style="margin-bottom:6px;"></div>` : ''}
+
+    ${incluye('desenlaceUTIPeriodo') ? `
+    <h3 style="font-size:16.5px; color:var(--teal-dark); margin-bottom:2px;">DESENLACE DE LOS PASES A UTI (EGRESOS)</h3>
+    <p class="sub-h" style="margin-bottom:6px;">${pasesUTIPeriodo.length} pase(s) a UTI en el período. Los que volvieron a Sala 11 se fusionan como la misma internación y no se pueden contar acá por separado.</p>
+    <div id="chartDesenlaceUTI" style="margin-bottom:6px;"></div>` : ''}
+
     ${incluye('tendenciaOcupacion') ? `
     <h3 style="font-size:16.5px; color:var(--teal-dark); margin-bottom:8px;">TENDENCIA DE OCUPACIÓN (ÚLTIMOS 6 MESES)</h3>
     <p class="sub-h" style="margin-bottom:10px;">No depende del rango de fechas elegido arriba. Incluye los pacientes internados ahora mismo, no solo los ya dados de alta.</p>
@@ -3764,17 +3825,13 @@ function renderReportes(){
   if(modoReporte==='actual'){
     if(incluye('salaActualCalle')) renderPercentBars('chartCalleActual', [{label:'En situación de calle', pct:pctCalleActual, color:'#B9821D'}]);
     if(incluye('salaActualEdad')) renderColumnChart('chartEdadActual', edadRangoCounts, '#6E4FA0');
-    if(incluye('salaActualTransmision')) renderDonutChart('chartTransmisionActual', transmisionActual);
-    if(incluye('salaActualDiagnosticos')) renderBarChart('chartDiagActual', topDiagActual, '#0B5E59');
+    if(incluye('salaActualTransmision')) renderDonutChart('chartTransmisionActual', transmisionActual, null, false, true);
     if(incluye('salaActualOportunistas')) renderStackedBar('chartOportunistasActual', [{label:'Oportunistas', count:opActualSi, color:'#0B5E59'},{label:'No oportunistas', count:opActualNo, color:'#9AA5AD'}]);
-    if(incluye('salaActualSifilis')) renderPercentBars('chartSifilisActual', [{label:'Sífilis diagnosticada en la internación', pct:pctSifilisActual, color:'#C0392B'}]);
     if(incluye('salaActualTB')){
       renderStackedBar('chartTBEmpiricoActual', [{label:'Empírico', count:tbEmpiricoActual, color:'#B9821D'},{label:'Dirigido (confirmado)', count:tbDirigidoActual, color:'#0B5E59'}]);
       renderBarChart('chartTBSitioActual', topTBSitioActual, '#0B5E59');
       renderPercentBars('chartTBDiseminadaActual', [{label:'TB diseminada (>2 sitios)', pct:pctTBDiseminadaActual, color:'#C0392B'}]);
     }
-    if(incluye('salaActualIIH')) renderBarChart('chartIIHActual', topIIHActual, '#C0392B');
-    if(incluye('salaActualGermenes')) renderBarChart('chartGermenesActual', topGermenesActual, '#9A2E22');
   }
   if(modoReporte==='periodo'){
     if(incluye('edadPeriodo')) renderColumnChart('chartEdadPeriodo', edadRangoCountsPeriodo, '#6E4FA0');
@@ -3795,6 +3852,18 @@ function renderReportes(){
     if(incluye('diagnosticos')) renderBarChart('chartDiagnosticos', topDiag, '#0B5E59');
     if(incluye('medicos')) renderBarChart('chartMedicos', topMedicos, '#2563AF');
     if(incluye('reinternacionPeriodo')) renderDonutChart('chartReinternacion', {'Primera vez': cantPrimeraVez, 'Reinternación': cantReinternacion}, {'Primera vez':'#2E7D5B', 'Reinternación':'#C0392B'});
+    if(incluye('alergiasPeriodo')){
+      renderPercentBars('chartAlergiasPct', [{label:'Con alguna alergia registrada', pct:pctAlergias, color:'#AD1457'}]);
+      if(Object.keys(tipoReaccionCounts).length) renderDonutChart('chartAlergiasTipo', tipoReaccionCounts);
+    }
+    if(incluye('nacionalidadPeriodo')) renderBarChart('chartNacionalidad', topNacionalidad, '#2563AF');
+    if(incluye('vdrlInterpretacionPeriodo')) renderDonutChart('chartVDRLInterpretacion', vdrlInterpretacionCounts);
+    if(incluye('tbPreviaPeriodo')){
+      renderPercentBars('chartTBPreviaPct', [{label:'Con antecedente de TB previa', pct:pctTBPrevia, color:'#B9821D'}]);
+      if(conTBPrevia.length) renderStackedBar('chartTBPreviaTratamiento', [{label:'Completó tratamiento previo', count:tbPreviaCompletoCount, color:'#0B5E59'},{label:'No completó / abandonó', count:tbPreviaAbandonoCount, color:'#C0392B'}]);
+    }
+    if(incluye('duracionTratamientoPeriodo')) renderBarChart('chartDuracionTratamiento', promDuracionPorDiag, '#6E4FA0');
+    if(incluye('desenlaceUTIPeriodo')) renderStackedBar('chartDesenlaceUTI', [{label:'Falleció en UTI', count:utiFallecidos, color:'#C0392B'},{label:'Vive (sin retorno a Sala 11)', count:utiVive, color:'#2E7D5B'},{label:'Sin desenlace confirmado', count:utiPendiente, color:'#9AA5AD'}]);
     if(incluye('tendenciaOcupacion')){
       const tendencia = computeOcupacionMensual(6);
       renderLineChart('chartTendencia', tendencia.labels, tendencia.values, '#0B5E59', 100, '%');
