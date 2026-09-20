@@ -280,6 +280,29 @@
   .close-x:hover{ background:#DCE0E2; }
 
   .print-area{ display:contents; }
+  /* ---------- Responsive: celular y tablet ---------- */
+  @media (max-width: 900px){
+    .main-layout{ grid-template-columns:1fr; }
+  }
+  @media (max-width: 700px){
+    .wrap{ padding:16px 12px 40px; }
+    .title-block h1{ font-size:30px; }
+    .title-block .sub{ font-size:13.5px; }
+    header{ gap:10px; }
+    .stat{ min-width:78px; padding:8px 10px; }
+    .stat .n{ font-size:20px; }
+    .wings{ grid-template-columns:1fr; gap:14px; }
+    .corridor{ writing-mode:horizontal-tb; padding:4px 0; font-size:12px; border-left:none; border-right:none; border-top:1px dashed var(--line); border-bottom:1px dashed var(--line); }
+    .isolation-beds{ grid-template-columns:repeat(2,1fr); }
+    .modal{ padding:16px; max-width:96vw; }
+    .modal h2{ font-size:18px; }
+    .seccion-grid{ grid-template-columns:1fr; }
+    .legend-vertical{ padding:12px; }
+  }
+  @media (max-width: 420px){
+    .row2{ grid-template-columns:1fr; }
+    .isolation-beds{ grid-template-columns:1fr 1fr; }
+  }
   @media print{
   @page{ size: landscape; margin: 10mm; }
     @page{ size:A4; margin:8mm; }
