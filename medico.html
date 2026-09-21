@@ -623,8 +623,10 @@ const rightWing = [['14A','14B'], ['15','16'], 'zone:Área limpia', ['17','18']]
 let beds = {}; // id -> {status, patient:{nombre,dni,aislamiento}, block:{motivo,detalle,linkedTo}}
 let historial = []; // {dni, nombre, ingreso, egreso, motivoEgreso}
 let diagnosticosLog = []; // {dni, nombre, cama, egreso, categoria, estado, tratamiento} — uno por diagnóstico
+let intercurrenciasLog = []; // {dni, nombre, cama, egreso, tipo, tipoRAM, farmacoRAM, descripcion, fecha} — uno por intercurrencia
 let pendingHistorialAppends = []; // altas nuevas todavía no confirmadas en la planilla
 let pendingDiagnosticosAppends = []; // diagnósticos nuevos todavía no confirmados en la planilla
+let pendingIntercurrenciasAppends = []; // intercurrencias nuevas todavía no confirmadas en la planilla
 let notas = []; // {id, texto, creada} — pendientes del día compartidos por el equipo
 let eventos = []; // {id, titulo, fecha, tipo} — cumpleaños/vacaciones/congresos/etc, compartidos por el equipo
 let conflictivos = []; // {dni, nombre, motivo, fecha} — pacientes marcados por conducta conflictiva
@@ -847,7 +849,7 @@ function renderFields(){
           <option value="Otro" ${p.tipoDocumento==='Otro'?'selected':''}>Otro</option>
         </select>
       </div>
-      <div class="field"><label>DNI</label><input id="fDni" value="${p.dni||''}" onblur="checkDniHistory()"></div>
+      <div class="field"><label>Número</label><input id="fDni" value="${p.dni||''}" onblur="checkDniHistory()"></div>
       <div class="field"><label>Médico a cargo</label>
         <select id="fMedico">
           <option value="" ${!p.medico?'selected':''}>Sin asignar</option>
@@ -1108,6 +1110,7 @@ function confirmEgreso(){
     sensibilidad: c.rescateMicro==='Sí' ? (c.sensibilidad||'') : '',
     mecanismoResistencia: (c.mecanismoResistencia||[]).join(', '),
     trastornoAdiccion: c.trastornoAdiccion || '',
+    intercurrencias: (c.intercurrencias||[]).join(', '),
     pasoPorUTI: c.pasoPorUTI || 'No',
     evolucion: c.evolucion || '',
     egreso: fecha,
@@ -1177,6 +1180,17 @@ function confirmEgreso(){
     pendingDiagnosticosAppends.push(diagIIH);
     diagEntriesDeEsteEgreso.push(diagIIH);
   });
+  // Las intercurrencias no infecciosas se registran aparte — NO cuentan como diagnóstico
+  (c.intercurrenciasDetalle || []).forEach(ic=>{
+    if(!ic.tipo) return;
+    const intercEntry = {
+      dni: patient.dni, nombre: patient.nombre, cama: id, egreso: fecha,
+      tipo: ic.tipo, tipoRAM: ic.tipoRAM || '', farmacoRAM: ic.farmacoRAM || '',
+      descripcion: ic.descripcion || '', fecha: ic.fecha || ''
+    };
+    intercurrenciasLog.push(intercEntry);
+    pendingIntercurrenciasAppends.push(intercEntry);
+  });
 
   if(document.getElementById('fMarcarConflictivo').checked){
     const motivosSeleccionados = [...document.querySelectorAll('.conflMotivoCheck:checked')].map(el=>el.value);
@@ -1214,6 +1228,10 @@ function startClinico(){
   activeIIHIndexes = [];
   const existingIIH = (c.infeccionesIHDetalle && c.infeccionesIHDetalle.length) ? c.infeccionesIHDetalle : [null];
   existingIIH.forEach(entry => addIIHEntry(entry));
+  intercurrenciaCounter = 0;
+  activeIntercurrenciaIndexes = [];
+  const existingIntercurrencias = (c.intercurrenciasDetalle && c.intercurrenciasDetalle.length) ? c.intercurrenciasDetalle : [null];
+  existingIntercurrencias.forEach(entry => addIntercurrenciaEntry(entry));
 }
 function renderClinicoFormHTML(c){
   const prog = calcularProgresoDatosClinicos(c);
@@ -1323,7 +1341,37 @@ function renderClinicoFormHTML(c){
       </div>
     </details>
     <details class="ind-details">
-      <summary>3. Coinfecciones y serologías</summary>
+      <summary>3. Comorbilidades</summary>
+      <div class="ind-details-body">
+    <div class="field">
+      <div style="display:flex; flex-wrap:wrap; gap:6px; margin-bottom:6px;">
+        ${COMORB_OPCIONES.map(op=>`<label style="display:flex; align-items:center; gap:4px; font-size:14.2px; font-weight:600; color:var(--ink); border:1px solid var(--line); border-radius:6px; padding:5px 8px;"><input type="checkbox" class="comorbCheck" value="${op}" ${(c.comorbilidades||[]).includes(op)?'checked':''} style="width:auto;">${op}</label>`).join('')}
+      </div>
+      <input id="cComorbilidadesOtras" class="uppercase-input" value="${c.comorbilidadesOtras||''}" placeholder="Otras (especificar)">
+    </div>
+    <div class="field"><label>Alergias</label>
+      <select id="cTieneAlergias" onchange="toggleAlergiasDetalle()">
+        <option value="" ${!c.tieneAlergias?'selected':''}>-- Elegir --</option>
+        <option value="No" ${c.tieneAlergias==='No'?'selected':''}>No</option>
+        <option value="Sí" ${c.tieneAlergias==='Sí'?'selected':''}>Sí</option>
+      </select>
+    </div>
+    <div id="alergiasDetalleWrap" style="${c.tieneAlergias==='Sí'?'':'display:none;'}">
+      <div class="field"><label>Tipo de reacción</label>
+        <select id="cTipoReaccionAlergia">
+          <option value="" ${!c.tipoReaccionAlergia?'selected':''}>-- Elegir --</option>
+          <option value="Angioedema" ${c.tipoReaccionAlergia==='Angioedema'?'selected':''}>Angioedema</option>
+          <option value="Farmacodermia" ${c.tipoReaccionAlergia==='Farmacodermia'?'selected':''}>Farmacodermia</option>
+          <option value="Anafilaxia" ${c.tipoReaccionAlergia==='Anafilaxia'?'selected':''}>Anafilaxia</option>
+        </select>
+      </div>
+      <div class="field"><label>¿Con qué fármaco?</label><input id="cFarmacoAlergia" class="uppercase-input" value="${c.farmacoAlergia||''}"></div>
+    </div>
+
+      </div>
+    </details>
+    <details class="ind-details">
+      <summary>4. Coinfecciones y serologías</summary>
       <div class="ind-details-body">
     <div class="field"><label>Coinfecciones</label>
       <div style="display:flex; gap:14px; margin-bottom:6px; font-size:15.3px;">
@@ -1363,7 +1411,7 @@ function renderClinicoFormHTML(c){
       </div>
     </details>
     <details class="ind-details">
-      <summary>4. Tuberculosis</summary>
+      <summary>5. Tuberculosis</summary>
       <div class="ind-details-body">
     <div class="field"><label>¿Tuvo tuberculosis previamente (antes de esta internación)?</label>
       <select id="cTuvoTBPrevia" onchange="toggleTBPreviaDetalle()">
@@ -1418,37 +1466,13 @@ function renderClinicoFormHTML(c){
         <input id="cCausaEsquemaTBOtra" class="uppercase-input" value="${c.causaEsquemaTBOtra||''}" placeholder="Si elegiste Otro, especificar" style="margin-top:6px;">
       </div>
       <div class="field"><label>Fecha de inicio del tratamiento</label><input type="date" id="cTBFechaInicio" value="${c.tbFechaInicioTratamiento||''}"></div>
-      <div class="field"><label>Fecha de finalización</label><input type="date" id="cTBFechaFin" value="${c.tbFechaFinTratamiento||''}"></div>
-    </div>
-
+      <div class="field"><label>Fecha de finalización</label>
+        <input type="date" id="cTBFechaFin" value="${c.tbFechaFinTratamiento==='CONTINUA_AL_ALTA'?'':(c.tbFechaFinTratamiento||'')}" ${c.tbFechaFinTratamiento==='CONTINUA_AL_ALTA'?'disabled':''}>
+        <label style="display:flex; align-items:center; gap:5px; font-size:12.5px; font-weight:600; margin-top:5px;">
+          <input type="checkbox" id="cTBContinuaAlta" ${c.tbFechaFinTratamiento==='CONTINUA_AL_ALTA'?'checked':''} onchange="toggleContinuaAlta('cTBFechaFin','cTBContinuaAlta')" style="width:auto;">
+          Continúa al alta (tratamiento prolongado)
+        </label>
       </div>
-    </details>
-    <details class="ind-details">
-      <summary>5. Comorbilidades</summary>
-      <div class="ind-details-body">
-    <div class="field">
-      <div style="display:flex; flex-wrap:wrap; gap:6px; margin-bottom:6px;">
-        ${COMORB_OPCIONES.map(op=>`<label style="display:flex; align-items:center; gap:4px; font-size:14.2px; font-weight:600; color:var(--ink); border:1px solid var(--line); border-radius:6px; padding:5px 8px;"><input type="checkbox" class="comorbCheck" value="${op}" ${(c.comorbilidades||[]).includes(op)?'checked':''} style="width:auto;">${op}</label>`).join('')}
-      </div>
-      <input id="cComorbilidadesOtras" class="uppercase-input" value="${c.comorbilidadesOtras||''}" placeholder="Otras (especificar)">
-    </div>
-    <div class="field"><label>Alergias</label>
-      <select id="cTieneAlergias" onchange="toggleAlergiasDetalle()">
-        <option value="" ${!c.tieneAlergias?'selected':''}>-- Elegir --</option>
-        <option value="No" ${c.tieneAlergias==='No'?'selected':''}>No</option>
-        <option value="Sí" ${c.tieneAlergias==='Sí'?'selected':''}>Sí</option>
-      </select>
-    </div>
-    <div id="alergiasDetalleWrap" style="${c.tieneAlergias==='Sí'?'':'display:none;'}">
-      <div class="field"><label>Tipo de reacción</label>
-        <select id="cTipoReaccionAlergia">
-          <option value="" ${!c.tipoReaccionAlergia?'selected':''}>-- Elegir --</option>
-          <option value="Angioedema" ${c.tipoReaccionAlergia==='Angioedema'?'selected':''}>Angioedema</option>
-          <option value="Farmacodermia" ${c.tipoReaccionAlergia==='Farmacodermia'?'selected':''}>Farmacodermia</option>
-          <option value="Anafilaxia" ${c.tipoReaccionAlergia==='Anafilaxia'?'selected':''}>Anafilaxia</option>
-        </select>
-      </div>
-      <div class="field"><label>¿Con qué fármaco?</label><input id="cFarmacoAlergia" class="uppercase-input" value="${c.farmacoAlergia||''}"></div>
     </div>
 
       </div>
@@ -1492,7 +1516,24 @@ function renderClinicoFormHTML(c){
       </div>
     </details>
     <details class="ind-details">
-      <summary>7. Diagnósticos de esta internación</summary>
+      <summary>7. Intercurrencias no infecciosas</summary>
+      <div class="ind-details-body">
+    <div class="field"><label>¿Tuvo alguna intercurrencia no infecciosa durante esta internación?</label>
+      <select id="cTuvoIntercurrencias" onchange="toggleIntercurrenciasDetalle()">
+        <option value="" ${!c.tuvoIntercurrencias?'selected':''}>-- Elegir --</option>
+        <option value="No" ${c.tuvoIntercurrencias==='No'?'selected':''}>No</option>
+        <option value="Sí" ${c.tuvoIntercurrencias==='Sí'?'selected':''}>Sí</option>
+      </select>
+    </div>
+    <div id="intercurrenciasDetalleWrap" style="${c.tuvoIntercurrencias==='Sí'?'':'display:none;'}">
+      <div id="intercurrenciasContainer"></div>
+      <button type="button" class="btn ghost" style="width:100%; margin-bottom:14px;" onclick="addIntercurrenciaEntry()">+ Agregar intercurrencia</button>
+    </div>
+
+      </div>
+    </details>
+    <details class="ind-details">
+      <summary>8. Diagnósticos de esta internación</summary>
       <div class="ind-details-body">
     <div id="recordatorioTBEnDiagnosticos" style="${c.tuvoTB==='Sí'?'':'display:none;'} background:#FDF3DC; border:1px solid #B9821D; color:#8A611A; border-radius:8px; padding:8px 12px; margin-bottom:10px; font-size:13px; font-weight:600;">
       📌 La tuberculosis que marcaste en la sección "Tuberculosis" ya se suma sola acá — no hace falta cargarla de nuevo.
@@ -1506,12 +1547,12 @@ function renderClinicoFormHTML(c){
       </div>
     </details>
     <details class="ind-details">
-      <summary>8. Evolución</summary>
+      <summary>9. Evolución</summary>
       <div class="ind-details-body">
     <div class="field">
       <label style="display:flex; align-items:center; gap:6px; font-weight:600;">
         <input type="checkbox" id="cPasoPorUTI" ${c.pasoPorUTI==='Sí'?'checked':''} style="width:auto;">
-        ¿Pasó por UTI durante esta internación? (haya vuelto o no)
+        ¿Pasó por UTI durante esta internación?
       </label>
     </div>
     <div class="field"><label>Evolución general</label><textarea id="cEvolucion" class="uppercase-input" rows="3">${c.evolucion||''}</textarea></div>      </div>
@@ -1526,6 +1567,8 @@ let diagCounter = 0;
 let activeDiagIndexes = [];
 const COMORB_OPCIONES = ['Diabetes','HTA','Desnutrición','Tabaquismo severo','EPOC','Insuficiencia cardíaca','ERC','Cirrosis','Trastorno de adicción a drogas psicoactivas'];
 const IIH_OPCIONES = ['Neumonía intrahospitalaria','Neumonía asociada a ventilación','Bacteriemia','ITU','Diarrea por C. difficile','Infección asociada a catéter'];
+const INTERCURRENCIA_OPCIONES = ['Reacción adversa medicamentosa (RAM)','Sangrado','Síndrome de reconstitución inmune (SIRI)','Evento trombótico (TVP/TEP)','Delirium / síndrome confusional agudo','Insuficiencia renal aguda','Alteración hidroelectrolítica o metabólica','Convulsiones','Caída o lesión traumática','Úlcera por presión','Otra'];
+const RAM_OPCIONES = ['Alergia','Farmacodermia','Hepatotoxicidad','Neurotoxicidad','Nefrotoxicidad','Citopenias','Otra'];
 const GERMEN_OPCIONES = ['SAMS','SAMR','Enterobacteria','ABA (Acinetobacter baumannii)','PAE (Pseudomonas aeruginosa)','Clostridium difficile','Otro'];
 const MECANISMO_OPCIONES = ['BLEE','AMPc','KPC','MBL','OXA'];
 const TB_SITUACION_OPCIONES = ['Primer episodio (sin antecedente de TB)','Recaída / reinfección','Retoma tratamiento abandonado','Fracaso terapéutico'];
@@ -1550,7 +1593,13 @@ function renderIIHEntryBlock(entry, idx){
       </div>
       <div class="field"><label>Tratamiento</label><textarea id="iihTratamiento_${idx}" class="uppercase-input" rows="2">${entry.tratamiento||''}</textarea></div>
       <div class="field"><label>Fecha de inicio de tratamiento</label><input type="date" id="iihFechaInicio_${idx}" value="${entry.fechaInicioTratamiento||''}"></div>
-      <div class="field"><label>Fecha de finalización</label><input type="date" id="iihFechaFin_${idx}" value="${entry.fechaFinTratamiento||''}"></div>
+      <div class="field"><label>Fecha de finalización</label>
+        <input type="date" id="iihFechaFin_${idx}" value="${entry.fechaFinTratamiento==='CONTINUA_AL_ALTA'?'':(entry.fechaFinTratamiento||'')}" ${entry.fechaFinTratamiento==='CONTINUA_AL_ALTA'?'disabled':''}>
+        <label style="display:flex; align-items:center; gap:5px; font-size:12.5px; font-weight:600; margin-top:5px;">
+          <input type="checkbox" id="iihContinuaAlta_${idx}" ${entry.fechaFinTratamiento==='CONTINUA_AL_ALTA'?'checked':''} onchange="toggleContinuaAlta('iihFechaFin_${idx}','iihContinuaAlta_${idx}')" style="width:auto;">
+          Continúa al alta (tratamiento prolongado)
+        </label>
+      </div>
       <button type="button" class="btn ghost" style="width:100%; border-color:var(--rot-bd); color:var(--rot-bd);" onclick="removeIIHEntry(${idx})">Quitar esta infección</button>
     </div>
   `;
@@ -1580,6 +1629,53 @@ function toggleIIHDetalle(){
   document.getElementById('iihDetalleWrap').style.display = document.getElementById('cTuvoIIH').value==='Sí' ? '' : 'none';
   actualizarRecordatorioIIH();
 }
+/* ---------- Intercurrencias no infecciosas ---------- */
+let intercurrenciaCounter = 0;
+let activeIntercurrenciaIndexes = [];
+function renderIntercurrenciaEntryBlock(entry, idx){
+  entry = entry || {tipo:'', tipoRAM:'', farmacoRAM:'', descripcion:'', fecha:''};
+  const esRAM = entry.tipo === 'Reacción adversa medicamentosa (RAM)';
+  return `
+    <div class="diag-entry" id="intercurrenciaEntry_${idx}" style="border:1px solid var(--line); border-radius:10px; padding:10px; margin-bottom:10px;">
+      <div class="field"><label>Tipo</label>
+        <select id="intercurrenciaTipo_${idx}" onchange="toggleRAMDetalle(${idx})">
+          <option value="" ${entry.tipo===''?'selected':'disabled'}>-- Elegir --</option>
+          ${INTERCURRENCIA_OPCIONES.map(op=>`<option value="${op}" ${entry.tipo===op?'selected':''}>${op}</option>`).join('')}
+        </select>
+      </div>
+      <div id="intercurrenciaRAMWrap_${idx}" style="${esRAM?'':'display:none;'}">
+        <div class="field"><label>Tipo de RAM</label>
+          <select id="intercurrenciaTipoRAM_${idx}">
+            <option value="" ${!entry.tipoRAM?'selected':''}>-- Elegir --</option>
+            ${RAM_OPCIONES.map(op=>`<option value="${op}" ${entry.tipoRAM===op?'selected':''}>${op}</option>`).join('')}
+          </select>
+        </div>
+        <div class="field"><label>¿Con qué fármaco?</label><input id="intercurrenciaFarmacoRAM_${idx}" class="uppercase-input" value="${entry.farmacoRAM||''}"></div>
+      </div>
+      <div class="field"><label>Descripción</label><textarea id="intercurrenciaDescripcion_${idx}" class="uppercase-input" rows="2">${entry.descripcion||''}</textarea></div>
+      <div class="field"><label>Fecha del evento</label><input type="date" id="intercurrenciaFecha_${idx}" value="${entry.fecha||''}"></div>
+      <button type="button" class="btn ghost" style="width:100%; border-color:var(--rot-bd); color:var(--rot-bd);" onclick="removeIntercurrenciaEntry(${idx})">Quitar esta intercurrencia</button>
+    </div>
+  `;
+}
+function addIntercurrenciaEntry(existingEntry){
+  const container = document.getElementById('intercurrenciasContainer');
+  const idx = intercurrenciaCounter++;
+  container.insertAdjacentHTML('beforeend', renderIntercurrenciaEntryBlock(existingEntry, idx));
+  activeIntercurrenciaIndexes.push(idx);
+}
+function removeIntercurrenciaEntry(idx){
+  const el = document.getElementById('intercurrenciaEntry_'+idx);
+  if(el) el.remove();
+  activeIntercurrenciaIndexes = activeIntercurrenciaIndexes.filter(i=>i!==idx);
+}
+function toggleRAMDetalle(idx){
+  const esRAM = document.getElementById('intercurrenciaTipo_'+idx).value === 'Reacción adversa medicamentosa (RAM)';
+  document.getElementById('intercurrenciaRAMWrap_'+idx).style.display = esRAM ? '' : 'none';
+}
+function toggleIntercurrenciasDetalle(){
+  document.getElementById('intercurrenciasDetalleWrap').style.display = document.getElementById('cTuvoIntercurrencias').value==='Sí' ? '' : 'none';
+}
 function toggleRescateDetalle(){
   document.getElementById('rescateDetalleWrap').style.display = document.getElementById('cRescateMicro').value==='Sí' ? '' : 'none';
 }
@@ -1608,7 +1704,13 @@ function renderDiagBlock(entry, idx){
       </div>
       <div class="field"><label>Tratamiento</label><textarea id="dTrat_${idx}" class="uppercase-input" rows="2">${entry.tratamiento||''}</textarea></div>
       <div class="field"><label>Fecha de inicio (si se indicó algún antimicrobiano)</label><input type="date" id="dFechaInicio_${idx}" value="${entry.fechaInicioTratamiento||''}"></div>
-      <div class="field"><label>Fecha de finalización</label><input type="date" id="dFechaFin_${idx}" value="${entry.fechaFinTratamiento||''}"></div>
+      <div class="field"><label>Fecha de finalización</label>
+        <input type="date" id="dFechaFin_${idx}" value="${entry.fechaFinTratamiento==='CONTINUA_AL_ALTA'?'':(entry.fechaFinTratamiento||'')}" ${entry.fechaFinTratamiento==='CONTINUA_AL_ALTA'?'disabled':''}>
+        <label style="display:flex; align-items:center; gap:5px; font-size:12.5px; font-weight:600; margin-top:5px;">
+          <input type="checkbox" id="dContinuaAlta_${idx}" ${entry.fechaFinTratamiento==='CONTINUA_AL_ALTA'?'checked':''} onchange="toggleContinuaAlta('dFechaFin_${idx}','dContinuaAlta_${idx}')" style="width:auto;">
+          Continúa al alta (tratamiento prolongado)
+        </label>
+      </div>
       <button type="button" class="btn ghost" style="width:100%; border-color:var(--rot-bd); color:var(--rot-bd);" onclick="removeDiagEntry(${idx})">Quitar este diagnóstico</button>
     </div>
   `;
@@ -1634,6 +1736,12 @@ function toggleTiempoDxVIH(){
 }
 function toggleAlergiasDetalle(){
   document.getElementById('alergiasDetalleWrap').style.display = document.getElementById('cTieneAlergias').value==='Sí' ? '' : 'none';
+}
+function toggleContinuaAlta(fechaId, checkId){
+  const fechaEl = document.getElementById(fechaId);
+  const marcado = document.getElementById(checkId).checked;
+  fechaEl.disabled = marcado;
+  if(marcado) fechaEl.value = '';
 }
 function toggleTBDetalle(){
   const show = document.getElementById('cTuvoTB').value==='Sí';
@@ -1722,7 +1830,7 @@ function saveClinico(){
     estado: document.getElementById('dEstado_'+idx).value,
     tratamiento: document.getElementById('dTrat_'+idx).value.trim(),
     fechaInicioTratamiento: document.getElementById('dFechaInicio_'+idx).value,
-    fechaFinTratamiento: document.getElementById('dFechaFin_'+idx).value
+    fechaFinTratamiento: document.getElementById('dContinuaAlta_'+idx).checked ? 'CONTINUA_AL_ALTA' : document.getElementById('dFechaFin_'+idx).value
   }));
   const comorbilidades = [...document.querySelectorAll('.comorbCheck:checked')].map(el=>el.value);
   const tuvoIIH = document.getElementById('cTuvoIIH').value;
@@ -1730,13 +1838,26 @@ function saveClinico(){
     tipo: document.getElementById('iihTipo_'+idx).value,
     tratamiento: document.getElementById('iihTratamiento_'+idx).value.trim(),
     fechaInicioTratamiento: document.getElementById('iihFechaInicio_'+idx).value,
-    fechaFinTratamiento: document.getElementById('iihFechaFin_'+idx).value
+    fechaFinTratamiento: document.getElementById('iihContinuaAlta_'+idx).checked ? 'CONTINUA_AL_ALTA' : document.getElementById('iihFechaFin_'+idx).value
   })).filter(e=>e.tipo) : [];
   const infeccionesIH = infeccionesIHDetalle.map(e=>e.tipo);
   const rescateMicro = tuvoIIH==='Sí' ? document.getElementById('cRescateMicro').value : 'No';
   const germen = rescateMicro==='Sí' ? document.getElementById('cGermen').value : '';
   const mecanismoResistencia = rescateMicro==='Sí' ? [...document.querySelectorAll('.mecanismoCheck:checked')].map(el=>el.value) : [];
   const sensibilidad = rescateMicro==='Sí' ? (mecanismoResistencia.length ? 'Con mecanismo de resistencia' : 'Sensible') : '';
+  const tuvoIntercurrencias = document.getElementById('cTuvoIntercurrencias').value;
+  const intercurrenciasDetalle = tuvoIntercurrencias==='Sí' ? activeIntercurrenciaIndexes.map(idx=>{
+    const tipo = document.getElementById('intercurrenciaTipo_'+idx).value;
+    const esRAM = tipo === 'Reacción adversa medicamentosa (RAM)';
+    return {
+      tipo,
+      tipoRAM: esRAM ? document.getElementById('intercurrenciaTipoRAM_'+idx).value : '',
+      farmacoRAM: esRAM ? document.getElementById('intercurrenciaFarmacoRAM_'+idx).value.trim() : '',
+      descripcion: document.getElementById('intercurrenciaDescripcion_'+idx).value.trim(),
+      fecha: document.getElementById('intercurrenciaFecha_'+idx).value
+    };
+  }).filter(e=>e.tipo) : [];
+  const intercurrencias = intercurrenciasDetalle.map(e=>e.tipoRAM ? e.tipo+' ('+e.tipoRAM+')' : e.tipo);
   const clinico = {
     fechaNacimiento: document.getElementById('cFechaNacimiento').value,
     edad: document.getElementById('cEdad').value,
@@ -1765,7 +1886,7 @@ function saveClinico(){
     causaEsquemaTB: (document.getElementById('cTuvoTB').value==='Sí' && document.getElementById('cEsquemaTB').value==='Alternativo') ? document.getElementById('cCausaEsquemaTB').value : '',
     causaEsquemaTBOtra: (document.getElementById('cTuvoTB').value==='Sí' && document.getElementById('cEsquemaTB').value==='Alternativo') ? document.getElementById('cCausaEsquemaTBOtra').value.trim() : '',
     tbFechaInicioTratamiento: document.getElementById('cTuvoTB').value==='Sí' ? document.getElementById('cTBFechaInicio').value : '',
-    tbFechaFinTratamiento: document.getElementById('cTuvoTB').value==='Sí' ? document.getElementById('cTBFechaFin').value : '',
+    tbFechaFinTratamiento: document.getElementById('cTuvoTB').value==='Sí' ? (document.getElementById('cTBContinuaAlta').checked ? 'CONTINUA_AL_ALTA' : document.getElementById('cTBFechaFin').value) : '',
     internacionPreviaOtroLugar: document.getElementById('cInternacionPreviaOtroLugar').value,
     tiempoInternacionPreviaOtroLugar: document.getElementById('cInternacionPreviaOtroLugar').value==='Sí' ? document.getElementById('cTiempoInternacionPrevia').value : '',
     internacionPreviaPorIO: document.getElementById('cInternacionPreviaOtroLugar').value==='Sí' ? document.getElementById('cInternacionPreviaPorIO').value : '',
@@ -1779,6 +1900,7 @@ function saveClinico(){
     tipoReaccionAlergia: document.getElementById('cTieneAlergias').value==='Sí' ? document.getElementById('cTipoReaccionAlergia').value : '',
     farmacoAlergia: document.getElementById('cTieneAlergias').value==='Sí' ? document.getElementById('cFarmacoAlergia').value.trim() : '',
     tuvoIIH, infeccionesIH, infeccionesIHDetalle, rescateMicro, germen, sensibilidad, mecanismoResistencia,
+    tuvoIntercurrencias, intercurrencias, intercurrenciasDetalle,
     trastornoAdiccion: comorbilidades.includes('Trastorno de adicción a drogas psicoactivas') ? 'Sí' : 'No',
     diagnosticos,
     pasoPorUTI: document.getElementById('cPasoPorUTI').checked ? 'Sí' : 'No',
@@ -1819,6 +1941,7 @@ function saveClinico(){
       sensibilidad: clinico.rescateMicro==='Sí' ? (clinico.sensibilidad||'') : '',
       mecanismoResistencia: (clinico.mecanismoResistencia||[]).join(', '),
       trastornoAdiccion: clinico.trastornoAdiccion || 'No',
+      intercurrencias: (clinico.intercurrencias||[]).join(', '),
       pasoPorUTI: clinico.pasoPorUTI || 'No',
       evolucion: clinico.evolucion || ''
     };
@@ -1860,6 +1983,16 @@ function saveClinico(){
       };
       diagnosticosLog.push(diagIIH);
       pendingDiagnosticosAppends.push(diagIIH);
+    });
+    (clinico.intercurrenciasDetalle || []).forEach(ic=>{
+      if(!ic.tipo) return;
+      const intercEntry = {
+        dni, nombre: clinicoRetroInfo.nombre, cama, egreso,
+        tipo: ic.tipo, tipoRAM: ic.tipoRAM || '', farmacoRAM: ic.farmacoRAM || '',
+        descripcion: ic.descripcion || '', fecha: ic.fecha || ''
+      };
+      intercurrenciasLog.push(intercEntry);
+      pendingIntercurrenciasAppends.push(intercEntry);
     });
 
     // Sacar la notita de "falta completar" de la pizarra, si existía
@@ -2220,7 +2353,9 @@ function buildResumenHCHTML(patient){
   if(diags.length){
     html += diags.map(d=>{
       let diasHtml = '';
-      if(d.fechaInicioTratamiento){
+      if(d.fechaFinTratamiento==='CONTINUA_AL_ALTA'){
+        diasHtml = `<span style="background:#E3F2FD; color:#1565C0; font-weight:800; padding:3px 9px; border-radius:7px; font-size:12.5px; margin-left:6px; white-space:nowrap;">🏁 Continúa al alta</span>`;
+      } else if(d.fechaInicioTratamiento){
         const dias = diasEntre(d.fechaInicioTratamiento, d.fechaFinTratamiento);
         diasHtml = !d.fechaFinTratamiento
           ? `<span style="background:#FDF3DC; color:#8A611A; font-weight:800; padding:3px 9px; border-radius:7px; font-size:12.5px; margin-left:6px; white-space:nowrap;">Día ${dias} de tratamiento (en curso)</span>`
@@ -2271,6 +2406,7 @@ const SECCIONES_CLINICO = [
   {nombre:'Tuberculosis', check: c => !!(c.tuvoTBPrevia || c.tuvoTB)},
   {nombre:'Comorbilidades', check: c => !!((c.comorbilidades && c.comorbilidades.length) || c.comorbilidadesOtras || c.tieneAlergias)},
   {nombre:'Infecciones intrahospitalarias', check: c => !!c.tuvoIIH},
+  {nombre:'Intercurrencias no infecciosas', check: c => !!c.tuvoIntercurrencias},
   {nombre:'Diagnósticos de esta internación', check: c => !!(c.diagnosticos && c.diagnosticos.some(d=>d.categoria))},
   {nombre:'Evolución', check: c => !!(c.evolucion && c.evolucion.trim())}
 ];
@@ -2959,6 +3095,7 @@ function confirmRetro(){
     antecedenteSifilis: 'No', vdrl: 'Negativa', vdrlDilucion: '', vdrlInterpretacion: '',
     comorbilidades: '', tieneAlergias: 'No', tipoReaccionAlergia: '', farmacoAlergia: '',
     infeccionesIH: '', rescateMicro: 'No', germen: '', sensibilidad: '', mecanismoResistencia: '', trastornoAdiccion: 'No',
+    intercurrencias: '',
     pasoPorUTI: 'No',
     evolucion: comoSeEntero ? ('No evaluado por el equipo. Cómo se enteraron: ' + comoSeEntero) : 'No evaluado por el equipo.',
     egreso: fEg ? isoToEsAr(fEg) : '(sin fecha)',
@@ -3304,6 +3441,7 @@ const REPORT_SECCIONES = [
 
   {key:'motivos', label:'Motivos de egreso', grupo:'periodo'},
   {key:'diagnosticos', label:'Diagnósticos más frecuentes', grupo:'periodo'},
+  {key:'intercurrenciasPeriodo', label:'Intercurrencias no infecciosas', grupo:'periodo'},
   {key:'oportunistasPeriodo', label:'Oportunistas vs. no oportunistas', grupo:'periodo'},
   {key:'sifilisPeriodo', label:'Sífilis diagnosticada en la internación', grupo:'periodo'},
   {key:'vdrlInterpretacionPeriodo', label:'Interpretación de VDRL positivas', grupo:'periodo'},
@@ -3379,7 +3517,7 @@ function exportarHistorialCSV(){
     ['tieneAlergias','TieneAlergias'],['tipoReaccionAlergia','TipoReaccionAlergia'],['farmacoAlergia','FarmacoAlergia'],
     ['infeccionesIH','InfeccionesIH'],['rescateMicro','RescateMicro'],['germen','Germen'],
     ['sensibilidad','Sensibilidad'],['mecanismoResistencia','MecanismoResistencia'],
-    ['trastornoAdiccion','TrastornoAdiccion'],
+    ['trastornoAdiccion','TrastornoAdiccion'],['intercurrencias','Intercurrencias'],
     ['pasoPorUTI','PasoPorUTI'],['evolucion','Evolucion'],['egreso','Egreso'],['motivoEgreso','MotivoEgreso'],['noEvaluado','NoEvaluado']
   ];
   const header = cols.map(c=>c[1]).join(';');
@@ -3476,6 +3614,19 @@ function renderReportes(){
   diagsEnRango.forEach(d=>{ diagCounts[d.categoria||'(sin especificar)'] = (diagCounts[d.categoria||'(sin especificar)']||0)+1; });
   // Pacientes internados ahora mismo con datos clínicos ya cargados (para sumarlos a ciertos indicadores)
   const topDiag = Object.entries(diagCounts).sort((a,b)=>b[1]-a[1]);
+  const intercurrEnRango = intercurrenciasLog.filter(ic=>{
+    const eg = parseEsAr(ic.egreso);
+    if(!eg) return false;
+    if(desde && eg < desde) return false;
+    if(hasta && eg > hasta) return false;
+    return true;
+  });
+  const intercurrCounts = {};
+  intercurrEnRango.forEach(ic=>{
+    const etiqueta = ic.tipoRAM ? ic.tipo+' ('+ic.tipoRAM+')' : (ic.tipo||'(sin especificar)');
+    intercurrCounts[etiqueta] = (intercurrCounts[etiqueta]||0)+1;
+  });
+  const topIntercurrencias = Object.entries(intercurrCounts).sort((a,b)=>b[1]-a[1]);
   const maxDiag = topDiag.length ? topDiag[0][1] : 1;
 
   // Indicadores clave (%) — solo egresos del período
@@ -3690,7 +3841,7 @@ function renderReportes(){
   // Días de tratamiento por diagnóstico — promedio, usando los diagnósticos del período que tienen ambas fechas
   const duracionPorDiag = {};
   diagsEnRango.forEach(d=>{
-    if(!d.fechaInicioTratamiento || !d.fechaFinTratamiento) return;
+    if(!d.fechaInicioTratamiento || !d.fechaFinTratamiento || d.fechaFinTratamiento==='CONTINUA_AL_ALTA') return;
     const ini = new Date(d.fechaInicioTratamiento+'T00:00:00');
     const fin = new Date(d.fechaFinTratamiento+'T00:00:00');
     const dias = Math.round((fin-ini)/86400000)+1;
@@ -3816,6 +3967,11 @@ function renderReportes(){
     <h3 style="font-size:16.5px; color:var(--teal-dark); margin-bottom:10px;">DIAGNÓSTICOS MÁS FRECUENTES (EGRESOS)</h3>
     <div id="chartDiagnosticos" style="margin-bottom:22px;"></div>` : ''}
 
+    ${incluye('intercurrenciasPeriodo') ? `
+    <h3 style="font-size:16.5px; color:var(--teal-dark); margin-bottom:2px;">INTERCURRENCIAS NO INFECCIOSAS (EGRESOS)</h3>
+    <p class="sub-h" style="margin-bottom:6px;">RAM, sangrados y otras — no cuentan como diagnóstico infectológico.</p>
+    <div id="chartIntercurrencias" style="margin-bottom:22px;"></div>` : ''}
+
     ${incluye('medicos') ? `
     <h3 style="font-size:16.5px; color:var(--teal-dark); margin-bottom:10px;">GIRO-CAMA POR MÉDICO</h3>
     <div id="chartMedicos" style="margin-bottom:22px;"></div>` : ''}
@@ -3898,6 +4054,7 @@ function renderReportes(){
     if(incluye('prevalenciaGermenes')) renderBarChart('chartPrevalenciaGermenes', topGermenes, '#9A2E22');
     if(incluye('motivos')) renderDonutChart('chartMotivos', motivos);
     if(incluye('diagnosticos')) renderBarChart('chartDiagnosticos', topDiag, '#0B5E59');
+    if(incluye('intercurrenciasPeriodo')) renderBarChart('chartIntercurrencias', topIntercurrencias, '#6E4FA0');
     if(incluye('medicos')) renderBarChart('chartMedicos', topMedicos, '#2563AF');
     if(incluye('reinternacionPeriodo')) renderDonutChart('chartReinternacion', {'Primera vez': cantPrimeraVez, 'Reinternación': cantReinternacion}, {'Primera vez':'#2E7D5B', 'Reinternación':'#C0392B'});
     if(incluye('alergiasPeriodo')){
@@ -4035,6 +4192,7 @@ async function loadState(){
     allIds.forEach(id => { beds[id] = cache.data.beds[id] || {status:'libre'}; });
     historial = cache.data.historial || [];
     diagnosticosLog = cache.data.diagnosticosLog || [];
+    intercurrenciasLog = cache.data.intercurrenciasLog || [];
     notas = cache.data.notas || [];
     eventos = cache.data.eventos || [];
     conflictivos = cache.data.conflictivos || [];
@@ -4042,6 +4200,7 @@ async function loadState(){
     pendingDesenlaceUTIAppends = cache.data.pendingDesenlaceUTIAppends || [];
     pendingHistorialAppends = cache.data.pendingHistorialAppends || [];
     pendingDiagnosticosAppends = cache.data.pendingDiagnosticosAppends || [];
+    pendingIntercurrenciasAppends = cache.data.pendingIntercurrenciasAppends || [];
     renderAll();
   }
 
@@ -4068,6 +4227,7 @@ async function loadState(){
     allIds.forEach(id => { beds[id] = data.beds[id] || {status:'libre'}; });
     if(data.historial) historial = data.historial;
     if(data.diagnosticosLog) diagnosticosLog = data.diagnosticosLog;
+    if(data.intercurrenciasLog) intercurrenciasLog = data.intercurrenciasLog;
     if(data.notas) notas = data.notas;
     if(data.eventos) eventos = data.eventos;
     if(data.conflictivos) conflictivos = data.conflictivos;
@@ -4087,13 +4247,14 @@ async function loadState(){
 
     // Si habían quedado egresos/diagnósticos sin mandar de una sesión offline anterior, recién ahora
     // los reenviamos — sobre la foto fresca que acabamos de leer, nunca pisándola con algo viejo.
-    if(pendingHistorialAppends.length || pendingDiagnosticosAppends.length || pendingDesenlaceUTIAppends.length){
+    if(pendingHistorialAppends.length || pendingDiagnosticosAppends.length || pendingDesenlaceUTIAppends.length || pendingIntercurrenciasAppends.length){
       await saveState();
     } else {
       pendingHistorialAppends = [];
       pendingDiagnosticosAppends = [];
       pendingDesenlaceUTIAppends = [];
-      saveLocalCache({beds, historial, diagnosticosLog, notas, eventos, conflictivos, desenlacesUTI, pendingHistorialAppends, pendingDiagnosticosAppends, pendingDesenlaceUTIAppends});
+      pendingIntercurrenciasAppends = [];
+      saveLocalCache({beds, historial, diagnosticosLog, intercurrenciasLog, notas, eventos, conflictivos, desenlacesUTI, pendingHistorialAppends, pendingDiagnosticosAppends, pendingDesenlaceUTIAppends, pendingIntercurrenciasAppends});
       setPendingSync(false);
     }
   }catch(e){
@@ -4136,7 +4297,7 @@ async function saveStateInterno(undoEgreso, completarClinico, mergeUTI){
   // (para no perderlo) y queda pendiente de reintentar en la próxima carga exitosa.
   if(!lastKnownServerBeds){
     console.error('saveState: no se pudo confirmar el estado del servidor, se guarda localmente y se reintenta más tarde.');
-    saveLocalCache({beds, historial, diagnosticosLog, notas, eventos, conflictivos, desenlacesUTI, pendingHistorialAppends, pendingDiagnosticosAppends, pendingDesenlaceUTIAppends});
+    saveLocalCache({beds, historial, diagnosticosLog, intercurrenciasLog, notas, eventos, conflictivos, desenlacesUTI, pendingHistorialAppends, pendingDiagnosticosAppends, pendingDesenlaceUTIAppends, pendingIntercurrenciasAppends});
     setPendingSync(true);
     setOfflineBanner(true, new Date().toISOString(), true);
     return;
@@ -4185,11 +4346,11 @@ async function saveStateInterno(undoEgreso, completarClinico, mergeUTI){
   // Censo/Notas/Meta viajan completos (son chicos y de tamaño fijo/acotado).
   // Historial y Diagnosticos viajan SOLO como "lo nuevo desde el último guardado exitoso",
   // para que la planilla los agregue al final sin reescribir años de datos acumulados.
-  const payload = {beds, notas, eventos, conflictivos, historialAppend: pendingHistorialAppends, diagnosticosAppend: pendingDiagnosticosAppends, desenlaceUTIAppend: pendingDesenlaceUTIAppends, token: googleIdToken};
+  const payload = {beds, notas, eventos, conflictivos, historialAppend: pendingHistorialAppends, diagnosticosAppend: pendingDiagnosticosAppends, desenlaceUTIAppend: pendingDesenlaceUTIAppends, intercurrenciasAppend: pendingIntercurrenciasAppends, token: googleIdToken};
   if(undoEgreso) payload.undoEgreso = undoEgreso;
   if(completarClinico) payload.completarClinico = completarClinico;
   if(mergeUTI) payload.mergeUTI = mergeUTI;
-  saveLocalCache({beds, historial, diagnosticosLog, notas, eventos, conflictivos, desenlacesUTI, pendingHistorialAppends, pendingDiagnosticosAppends, pendingDesenlaceUTIAppends}); // copia local completa, pase lo que pase con la conexión
+  saveLocalCache({beds, historial, diagnosticosLog, intercurrenciasLog, notas, eventos, conflictivos, desenlacesUTI, pendingHistorialAppends, pendingDiagnosticosAppends, pendingDesenlaceUTIAppends, pendingIntercurrenciasAppends}); // copia local completa, pase lo que pase con la conexión
   try{
     const res = await fetch(APPS_SCRIPT_URL, {
       method:'POST',
@@ -4211,7 +4372,8 @@ async function saveStateInterno(undoEgreso, completarClinico, mergeUTI){
       pendingHistorialAppends = []; // ya quedó guardado en la planilla, no hace falta reenviarlo
       pendingDiagnosticosAppends = [];
       pendingDesenlaceUTIAppends = [];
-      saveLocalCache({beds, historial, diagnosticosLog, notas, eventos, conflictivos, desenlacesUTI, pendingHistorialAppends, pendingDiagnosticosAppends, pendingDesenlaceUTIAppends});
+      pendingIntercurrenciasAppends = [];
+      saveLocalCache({beds, historial, diagnosticosLog, intercurrenciasLog, notas, eventos, conflictivos, desenlacesUTI, pendingHistorialAppends, pendingDiagnosticosAppends, pendingDesenlaceUTIAppends, pendingIntercurrenciasAppends});
       setPendingSync(false);
       setOfflineBanner(false);
       renderAll();
