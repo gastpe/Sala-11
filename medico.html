@@ -1170,7 +1170,7 @@ function confirmEgreso(){
       dni: patient.dni, nombre: patient.nombre, cama: id, egreso: fecha,
       categoria: iih.tipo,
       estado: 'Confirmado',
-      tratamiento: '',
+      tratamiento: iih.tratamiento || '',
       fechaInicioTratamiento: iih.fechaInicioTratamiento || '', fechaFinTratamiento: iih.fechaFinTratamiento || ''
     };
     diagnosticosLog.push(diagIIH);
@@ -1497,6 +1497,9 @@ function renderClinicoFormHTML(c){
     <div id="recordatorioTBEnDiagnosticos" style="${c.tuvoTB==='Sí'?'':'display:none;'} background:#FDF3DC; border:1px solid #B9821D; color:#8A611A; border-radius:8px; padding:8px 12px; margin-bottom:10px; font-size:13px; font-weight:600;">
       📌 La tuberculosis que marcaste en la sección "Tuberculosis" ya se suma sola acá — no hace falta cargarla de nuevo.
     </div>
+    <div id="recordatorioIIHEnDiagnosticos" style="${(c.infeccionesIHDetalle||[]).some(iih=>iih.tipo)?'':'display:none;'} background:#FDF3DC; border:1px solid #B9821D; color:#8A611A; border-radius:8px; padding:8px 12px; margin-bottom:10px; font-size:13px; font-weight:600;">
+      📌 Las infecciones intrahospitalarias que marcaste en esa sección ya se suman solas acá — no hace falta cargarlas de nuevo.
+    </div>
     <div id="diagContainer"></div>
     <button type="button" class="btn ghost" style="width:100%; margin-bottom:14px;" onclick="addDiagEntry()">+ Agregar diagnóstico</button>
 
@@ -1536,15 +1539,16 @@ const TIEMPO_INTERNACION_PREVIA_OPCIONES = ['Menos de 1 mes','1 a 3 meses','3 a 
 let iihCounter = 0;
 let activeIIHIndexes = [];
 function renderIIHEntryBlock(entry, idx){
-  entry = entry || {tipo:'', fechaInicioTratamiento:'', fechaFinTratamiento:''};
+  entry = entry || {tipo:'', tratamiento:'', fechaInicioTratamiento:'', fechaFinTratamiento:''};
   return `
     <div class="diag-entry" id="iihEntry_${idx}" style="border:1px solid var(--line); border-radius:10px; padding:10px; margin-bottom:10px;">
       <div class="field"><label>Tipo de infección</label>
-        <select id="iihTipo_${idx}">
+        <select id="iihTipo_${idx}" onchange="actualizarRecordatorioIIH()">
           <option value="" ${entry.tipo===''?'selected':'disabled'}>-- Elegir --</option>
           ${IIH_OPCIONES.map(op=>`<option value="${op}" ${entry.tipo===op?'selected':''}>${op}</option>`).join('')}
         </select>
       </div>
+      <div class="field"><label>Tratamiento</label><textarea id="iihTratamiento_${idx}" class="uppercase-input" rows="2">${entry.tratamiento||''}</textarea></div>
       <div class="field"><label>Fecha de inicio de tratamiento</label><input type="date" id="iihFechaInicio_${idx}" value="${entry.fechaInicioTratamiento||''}"></div>
       <div class="field"><label>Fecha de finalización</label><input type="date" id="iihFechaFin_${idx}" value="${entry.fechaFinTratamiento||''}"></div>
       <button type="button" class="btn ghost" style="width:100%; border-color:var(--rot-bd); color:var(--rot-bd);" onclick="removeIIHEntry(${idx})">Quitar esta infección</button>
@@ -1556,14 +1560,25 @@ function addIIHEntry(existingEntry){
   const idx = iihCounter++;
   container.insertAdjacentHTML('beforeend', renderIIHEntryBlock(existingEntry, idx));
   activeIIHIndexes.push(idx);
+  actualizarRecordatorioIIH();
 }
 function removeIIHEntry(idx){
   const el = document.getElementById('iihEntry_'+idx);
   if(el) el.remove();
   activeIIHIndexes = activeIIHIndexes.filter(i=>i!==idx);
+  actualizarRecordatorioIIH();
+}
+function actualizarRecordatorioIIH(){
+  const activo = document.getElementById('cTuvoIIH').value==='Sí';
+  const hayAlguna = activo && activeIIHIndexes.some(idx=>{
+    const el = document.getElementById('iihTipo_'+idx);
+    return el && el.value;
+  });
+  document.getElementById('recordatorioIIHEnDiagnosticos').style.display = hayAlguna ? '' : 'none';
 }
 function toggleIIHDetalle(){
   document.getElementById('iihDetalleWrap').style.display = document.getElementById('cTuvoIIH').value==='Sí' ? '' : 'none';
+  actualizarRecordatorioIIH();
 }
 function toggleRescateDetalle(){
   document.getElementById('rescateDetalleWrap').style.display = document.getElementById('cRescateMicro').value==='Sí' ? '' : 'none';
@@ -1713,6 +1728,7 @@ function saveClinico(){
   const tuvoIIH = document.getElementById('cTuvoIIH').value;
   const infeccionesIHDetalle = tuvoIIH==='Sí' ? activeIIHIndexes.map(idx=>({
     tipo: document.getElementById('iihTipo_'+idx).value,
+    tratamiento: document.getElementById('iihTratamiento_'+idx).value.trim(),
     fechaInicioTratamiento: document.getElementById('iihFechaInicio_'+idx).value,
     fechaFinTratamiento: document.getElementById('iihFechaFin_'+idx).value
   })).filter(e=>e.tipo) : [];
@@ -1839,7 +1855,7 @@ function saveClinico(){
         dni, nombre: clinicoRetroInfo.nombre, cama, egreso,
         categoria: iih.tipo,
         estado: 'Confirmado',
-        tratamiento: '',
+        tratamiento: iih.tratamiento || '',
         fechaInicioTratamiento: iih.fechaInicioTratamiento || '', fechaFinTratamiento: iih.fechaFinTratamiento || ''
       };
       diagnosticosLog.push(diagIIH);
@@ -2163,7 +2179,7 @@ function obtenerDiagnosticosParaResumen(c){
     lista.push({
       categoria: iih.tipo,
       estado: 'Confirmado',
-      tratamiento: '',
+      tratamiento: iih.tratamiento || '',
       fechaInicioTratamiento: iih.fechaInicioTratamiento||'',
       fechaFinTratamiento: iih.fechaFinTratamiento||''
     });
@@ -2884,7 +2900,7 @@ setInterval(()=>{
   if(autoReloadedThisIdle) return; // ya se recargó una vez en este período de inactividad, no insistir
   const inactivo = Date.now() - lastActivityTime >= AUTO_RELOAD_MS;
   const hayModalAbierto = !!document.querySelector('.overlay.show');
-  if(inactivo && !hayModalAbierto){
+  if(inactivo && !hayModalAbierto && guardadoEnCurso===0){
     autoReloadedThisIdle = true;
     try{ sessionStorage.setItem('sala11_auto_reloaded', '1'); }catch(e){}
     location.reload();
@@ -4090,9 +4106,12 @@ async function loadState(){
   }
 }
 let saveStateQueue = Promise.resolve(); // encola los guardados para que nunca se pisen entre sí
+let guardadoEnCurso = 0; // cuántos guardados hay en curso ahora mismo (para no recargar la página en medio de uno)
 function saveState(undoEgreso, completarClinico, mergeUTI){
+  guardadoEnCurso++;
   const p = saveStateQueue.then(() => saveStateInterno(undoEgreso, completarClinico, mergeUTI));
   saveStateQueue = p.catch(()=>{}); // que un guardado fallido no trabe a los siguientes
+  p.finally(()=>{ guardadoEnCurso--; });
   return p;
 }
 async function saveStateInterno(undoEgreso, completarClinico, mergeUTI){
@@ -4103,7 +4122,7 @@ async function saveStateInterno(undoEgreso, completarClinico, mergeUTI){
   // la conseguimos recién ahora — así el guardado real no se pierde.
   if(!lastKnownServerBeds){
     try{
-      const res0 = await fetch(APPS_SCRIPT_URL + '?_=' + Date.now() + '&token=' + encodeURIComponent(googleIdToken||''), {cache:'no-store'});
+      const res0 = await fetch(APPS_SCRIPT_URL + '?_=' + Date.now() + '&token=' + encodeURIComponent(googleIdToken||'') + '&liviano=1', {cache:'no-store'});
       const data0 = await res0.json();
       const data0_confiable = data0.beds && Object.keys(data0.beds).length >= allIds.length / 2;
       if(data0_confiable) lastKnownServerBeds = data0.beds;
@@ -4128,7 +4147,7 @@ async function saveStateInterno(undoEgreso, completarClinico, mergeUTI){
   // en memoria (que puede estar vieja si esta pestaña quedó abierta mucho tiempo). Las camas
   // que sí cambiamos localmente se respetan tal cual, para que el guardado se aplique.
   try{
-    const resFresco = await fetch(APPS_SCRIPT_URL + '?_=' + Date.now() + '&token=' + encodeURIComponent(googleIdToken||''), {cache:'no-store'});
+    const resFresco = await fetch(APPS_SCRIPT_URL + '?_=' + Date.now() + '&token=' + encodeURIComponent(googleIdToken||'') + '&liviano=1', {cache:'no-store'});
     const fresco = await resFresco.json();
     // SALVAGUARDA: si la respuesta fresca viene sospechosamente vacía (menos de la mitad de las
     // camas esperadas), no confiamos en ella para "actualizar" camas que no tocamos — mejor
