@@ -1296,19 +1296,21 @@ function renderClinicoFormHTML(c){
       <select id="cTARV" onchange="toggleTarvDesde()">
         <option value="" ${!c.tarv?'selected':''}>-- Elegir --</option>
         <option value="Naive" ${c.tarv==='Naive'?'selected':''}>Naive</option>
-        <option value="En tratamiento" ${c.tarv==='En tratamiento'?'selected':''}>En tratamiento</option>
+        <option value="Ya lo tomaba antes de esta internación" ${c.tarv==='Ya lo tomaba antes de esta internación'?'selected':''}>Ya lo tomaba antes de esta internación</option>
+        <option value="Inició TARV en esta internación" ${c.tarv==='Inició TARV en esta internación'?'selected':''}>Inició TARV en esta internación</option>
+        <option value="Reinició TARV en esta internación" ${c.tarv==='Reinició TARV en esta internación'?'selected':''}>Reinició TARV en esta internación</option>
         <option value="Abandono" ${c.tarv==='Abandono'?'selected':''}>Abandono</option>
       </select>
     </div>
     <div class="field" id="cTarvDesdeWrap" style="${c.tarv && c.tarv!=='Naive' ? '' : 'display:none;'}"><label>Desde cuándo</label><input id="cTarvDesde" class="uppercase-input" value="${c.tarvDesde||''}" placeholder="Ej: 03/2024"></div>
-    <div class="field" id="cTipoEsquemaTARVWrap" style="${c.tarv==='En tratamiento' ? '' : 'display:none;'}">
+    <div class="field" id="cTipoEsquemaTARVWrap" style="${TARV_CON_ESQUEMA.includes(c.tarv) ? '' : 'display:none;'}">
       <label>Tipo de esquema</label>
       <select id="cTipoEsquemaTARV">
         <option value="" ${!c.tipoEsquemaTARV?'selected':''}>-- Elegir --</option>
         ${TIPO_ESQUEMA_TARV_OPCIONES.map(op=>`<option value="${op}" ${c.tipoEsquemaTARV===op?'selected':''}>${op}</option>`).join('')}
       </select>
     </div>
-    <div class="field" id="cTarvDrogasWrap" style="${c.tarv==='En tratamiento' ? '' : 'display:none;'}">
+    <div class="field" id="cTarvDrogasWrap" style="${TARV_CON_ESQUEMA.includes(c.tarv) ? '' : 'display:none;'}">
       <label>Drogas del esquema actual</label>
       <div style="display:flex; flex-wrap:wrap; gap:6px; margin-bottom:6px;">
         ${TARV_DROGAS_OPCIONES.map(op=>`<label style="display:flex; align-items:center; gap:4px; font-size:14.2px; font-weight:600; color:var(--ink); border:1px solid var(--line); border-radius:6px; padding:5px 8px;"><input type="checkbox" class="tarvDrogaCheck" value="${op}" ${(c.tarvDrogas||[]).includes(op)?'checked':''} style="width:auto;">${op}</label>`).join('')}
@@ -1577,6 +1579,7 @@ const NACIONALIDAD_OPCIONES = ['Argentina','Bolivia','Brasil','Chile','Colombia'
 const TB_CAUSA_ESQUEMA_OPCIONES = ['Hepatotoxicidad','Farmacodermia','Intolerancia','Resistencia','Otro'];
 const TIEMPO_DX_OPCIONES = ['6-12 meses','1 a 5 años','5 a 10 años','Más de 10 años','No sabe'];
 const TARV_DROGAS_OPCIONES = ['Tenofovir disoproxil (TDF)','Tenofovir alafenamida (TAF)','Emtricitabina (FTC)','Lamivudina (3TC)','Dolutegravir (DTG)','Bictegravir (BIC)','Raltegravir (RAL)','Efavirenz (EFV)','Darunavir/ritonavir (DRV/r)'];
+const TARV_CON_ESQUEMA = ['Ya lo tomaba antes de esta internación','Inició TARV en esta internación','Reinició TARV en esta internación'];
 const TIPO_ESQUEMA_TARV_OPCIONES = ['Clásico (2 análogos + tercera droga)','Biterapia','Fallo virológico - ajustado a test de resistencia','Fallo virológico - a ciegas (empírico)'];
 const TIEMPO_INTERNACION_PREVIA_OPCIONES = ['Menos de 1 mes','1 a 3 meses','3 a 6 meses','6 a 12 meses','Más de 1 año','No sabe'];
 let iihCounter = 0;
@@ -1780,7 +1783,7 @@ function toggleVDRLDilucion(){
 function toggleTarvDesde(){
   const tarv = document.getElementById('cTARV').value;
   const showDesde = tarv && tarv !== 'Naive';
-  const showEsquema = tarv === 'En tratamiento';
+  const showEsquema = TARV_CON_ESQUEMA.includes(tarv);
   document.getElementById('cTarvDesdeWrap').style.display = showDesde ? '' : 'none';
   document.getElementById('cTipoEsquemaTARVWrap').style.display = showEsquema ? '' : 'none';
   document.getElementById('cTarvDrogasWrap').style.display = showEsquema ? '' : 'none';
@@ -1873,9 +1876,9 @@ function saveClinico(){
     otraCoinfeccion: document.getElementById('cOtraCoinfeccion').value.trim(),
     tarv: document.getElementById('cTARV').value,
     tarvDesde: document.getElementById('cTarvDesde').value.trim(),
-    tipoEsquemaTARV: document.getElementById('cTARV').value==='En tratamiento' ? document.getElementById('cTipoEsquemaTARV').value : '',
-    tarvDrogas: document.getElementById('cTARV').value==='En tratamiento' ? [...document.querySelectorAll('.tarvDrogaCheck:checked')].map(el=>el.value) : [],
-    tarvDrogasOtra: document.getElementById('cTARV').value==='En tratamiento' ? document.getElementById('cTarvDrogasOtra').value.trim() : '',
+    tipoEsquemaTARV: TARV_CON_ESQUEMA.includes(document.getElementById('cTARV').value) ? document.getElementById('cTipoEsquemaTARV').value : '',
+    tarvDrogas: TARV_CON_ESQUEMA.includes(document.getElementById('cTARV').value) ? [...document.querySelectorAll('.tarvDrogaCheck:checked')].map(el=>el.value) : [],
+    tarvDrogasOtra: TARV_CON_ESQUEMA.includes(document.getElementById('cTARV').value) ? document.getElementById('cTarvDrogasOtra').value.trim() : '',
     tuvoTBPrevia: document.getElementById('cTuvoTBPrevia').value,
     completoTratamientoTBPrevia: document.getElementById('cTuvoTBPrevia').value==='Sí' ? document.getElementById('cCompletoTratamientoTBPrevia').value : '',
     tuvoTB: document.getElementById('cTuvoTB').value,
@@ -2272,9 +2275,12 @@ function construirAntecedenteVIH(c){
     if(c.cv) partes.push('CV ' + c.cv + (/^\d+$/.test(c.cv.trim()) ? ' cop/ml' : ''));
     frase += ' (' + partes.join(', ') + ')';
   }
-  if(c.tarv==='En tratamiento'){
+  if(TARV_CON_ESQUEMA.includes(c.tarv)){
     const drogas = [...(c.tarvDrogas||[]), c.tarvDrogasOtra||''].filter(Boolean).join(', ');
-    frase += ', en TARV' + (drogas ? ' con ' + drogas : '');
+    let verbo = 'en TARV';
+    if(c.tarv==='Inició TARV en esta internación') verbo = 'inició TARV en esta internación';
+    else if(c.tarv==='Reinició TARV en esta internación') verbo = 'reinició TARV en esta internación';
+    frase += ', ' + verbo + (drogas ? ' con ' + drogas : '');
   } else if(c.tarv==='Naive'){
     frase += ', sin TARV (naive)';
   } else if(c.tarv==='Abandono'){
@@ -3465,6 +3471,7 @@ const REPORT_SECCIONES = [
   {key:'edadPeriodo', label:'Rango de edades', grupo:'periodo'},
   {key:'medicos', label:'Giro-cama por médico', grupo:'periodo'},
   {key:'reinternacionPeriodo', label:'Primera vez vs. reinternación', grupo:'periodo'},
+  {key:'tarvPeriodo', label:'Inicio/reinicio de TARV en la internación', grupo:'periodo'},
   {key:'reinternacionAcumulada', label:'Reinternaciones acumuladas', grupo:'periodo'},
   {key:'tendenciaOcupacion', label:'Tendencia de ocupación', grupo:'periodo'},
   {key:'tendenciaReciente', label:'Tendencia diagnóstico reciente', grupo:'periodo'},
@@ -3831,6 +3838,11 @@ function renderReportes(){
   let cantPrimeraVez = 0, cantReinternacion = 0;
   episodios.forEach(ep=>{ if(esReinternacion(ep)) cantReinternacion++; else cantPrimeraVez++; });
 
+  // Inició o reinició TARV durante la internación — sobre los egresos del período
+  const inicioTARV = episodios.filter(h=>h.tarv==='Inició TARV en esta internación').length;
+  const reinicioTARV = episodios.filter(h=>h.tarv==='Reinició TARV en esta internación').length;
+  const pctInicioReinicioTARV = totalEgresos ? Math.round(((inicioTARV+reinicioTARV)/totalEgresos)*1000)/10 : 0;
+
   // Alergias registradas — sobre los egresos del período
   const conAlergia = episodios.filter(h=>h.tieneAlergias==='Sí');
   const pctAlergias = totalEgresos ? Math.round((conAlergia.length/totalEgresos)*1000)/10 : 0;
@@ -3996,6 +4008,11 @@ function renderReportes(){
     <p class="sub-h" style="margin-bottom:10px;">Cuenta como reinternación si ya estuvo antes en Sala 11, o si reportó una internación previa en otro lugar dentro del último año.</p>
     <div id="chartReinternacion" style="margin-bottom:22px;"></div>` : ''}
 
+    ${incluye('tarvPeriodo') ? `
+    <h3 style="font-size:16.5px; color:var(--teal-dark); margin-bottom:2px;">INICIO/REINICIO DE TARV EN LA INTERNACIÓN (EGRESOS)</h3>
+    <p class="sub-h" style="margin-bottom:6px;">${inicioTARV} inicio(s) + ${reinicioTARV} reinicio(s) sobre ${totalEgresos} egreso(s) del período.</p>
+    <div id="chartTARVInicioPct" style="margin-bottom:22px;"></div>` : ''}
+
     ${incluye('reinternacionAcumulada') ? `
     <h3 style="font-size:16.5px; color:var(--teal-dark); margin-bottom:8px;">REINTERNACIONES (TODO EL HISTORIAL ACUMULADO)</h3>
     <p style="font-size:15.3px; margin-bottom:4px;"><strong>${reinternados.length}</strong> paciente(s) con más de una internación registrada.</p>
@@ -4072,6 +4089,7 @@ function renderReportes(){
     if(incluye('intercurrenciasPeriodo')) renderBarChart('chartIntercurrencias', topIntercurrencias, '#6E4FA0');
     if(incluye('medicos')) renderBarChart('chartMedicos', topMedicos, '#2563AF');
     if(incluye('reinternacionPeriodo')) renderDonutChart('chartReinternacion', {'Primera vez': cantPrimeraVez, 'Reinternación': cantReinternacion}, {'Primera vez':'#2E7D5B', 'Reinternación':'#C0392B'});
+    if(incluye('tarvPeriodo')) renderPercentBars('chartTARVInicioPct', [{label:'Inició o reinició TARV durante la internación', pct:pctInicioReinicioTARV, color:'#0B5E59'}]);
     if(incluye('alergiasPeriodo')){
       renderPercentBars('chartAlergiasPct', [{label:'Con alguna alergia registrada', pct:pctAlergias, color:'#AD1457'}]);
       if(Object.keys(tipoReaccionCounts).length) renderDonutChart('chartAlergiasTipo', tipoReaccionCounts);
