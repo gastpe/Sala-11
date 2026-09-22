@@ -2280,7 +2280,7 @@ function construirAntecedenteVIH(c){
     let verbo = 'en TARV';
     if(c.tarv==='Inició TARV en esta internación') verbo = 'inició TARV en esta internación';
     else if(c.tarv==='Reinició TARV en esta internación') verbo = 'reinició TARV en esta internación';
-    frase += ', ' + verbo + (drogas ? ' con ' + drogas : '');
+    frase += ', ' + verbo + (c.tarvDesde ? ' el ' + c.tarvDesde : '') + (drogas ? ' con ' + drogas : '');
   } else if(c.tarv==='Naive'){
     frase += ', sin TARV (naive)';
   } else if(c.tarv==='Abandono'){
