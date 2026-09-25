@@ -1173,7 +1173,7 @@ function confirmEgreso(){
       dni: patient.dni, nombre: patient.nombre, cama: id, egreso: fecha,
       categoria: iih.tipo,
       estado: 'Confirmado',
-      tratamiento: iih.tratamiento || '',
+      tratamiento: construirTratamientoConGermen(iih),
       fechaInicioTratamiento: iih.fechaInicioTratamiento || '', fechaFinTratamiento: iih.fechaFinTratamiento || ''
     };
     diagnosticosLog.push(diagIIH);
@@ -1492,27 +1492,6 @@ function renderClinicoFormHTML(c){
     <div id="iihDetalleWrap" style="${c.tuvoIIH==='Sí'?'':'display:none;'}">
       <div id="iihContainer"></div>
       <button type="button" class="btn ghost" style="width:100%; margin-bottom:14px;" onclick="addIIHEntry()">+ Agregar infección</button>
-      <div class="field"><label>¿Hubo rescate microbiológico?</label>
-        <select id="cRescateMicro" onchange="toggleRescateDetalle()">
-          <option value="" ${!c.rescateMicro?'selected':''}>-- Elegir --</option>
-          <option value="No" ${c.rescateMicro==='No'?'selected':''}>No</option>
-          <option value="Sí" ${c.rescateMicro==='Sí'?'selected':''}>Sí</option>
-        </select>
-      </div>
-      <div id="rescateDetalleWrap" style="${c.rescateMicro==='Sí'?'':'display:none;'}">
-        <div class="field"><label>Germen aislado</label>
-          <select id="cGermen">
-            <option value="" ${!c.germen?'selected':''}>-- Elegir --</option>
-            ${GERMEN_OPCIONES.map(op=>`<option value="${op}" ${c.germen===op?'selected':''}>${op}</option>`).join('')}
-          </select>
-        </div>
-        <div class="field">
-          <label>Mecanismo de resistencia detectado (si no marcás ninguno, se considera sensible)</label>
-          <div style="display:flex; flex-wrap:wrap; gap:6px;">
-            ${MECANISMO_OPCIONES.map(op=>`<label style="display:flex; align-items:center; gap:4px; font-size:14.2px; font-weight:600; color:var(--ink); border:1px solid var(--line); border-radius:6px; padding:5px 8px;"><input type="checkbox" class="mecanismoCheck" value="${op}" ${(c.mecanismoResistencia||[]).includes(op)?'checked':''} style="width:auto;">${op}</label>`).join('')}
-          </div>
-        </div>
-      </div>
     </div>
 
       </div>
@@ -1585,7 +1564,7 @@ const TIEMPO_INTERNACION_PREVIA_OPCIONES = ['Menos de 1 mes','1 a 3 meses','3 a 
 let iihCounter = 0;
 let activeIIHIndexes = [];
 function renderIIHEntryBlock(entry, idx){
-  entry = entry || {tipo:'', tratamiento:'', fechaInicioTratamiento:'', fechaFinTratamiento:''};
+  entry = entry || {tipo:'', tratamiento:'', fechaInicioTratamiento:'', fechaFinTratamiento:'', rescateMicro:'', germen:'', mecanismoResistencia:[]};
   return `
     <div class="diag-entry" id="iihEntry_${idx}" style="border:1px solid var(--line); border-radius:10px; padding:10px; margin-bottom:10px;">
       <div class="field"><label>Tipo de infección</label>
@@ -1602,6 +1581,27 @@ function renderIIHEntryBlock(entry, idx){
           <input type="checkbox" id="iihContinuaAlta_${idx}" ${entry.fechaFinTratamiento==='CONTINUA_AL_ALTA'?'checked':''} onchange="toggleContinuaAlta('iihFechaFin_${idx}','iihContinuaAlta_${idx}')" style="width:auto;">
           Continúa al alta (tratamiento prolongado)
         </label>
+      </div>
+      <div class="field"><label>¿Hubo rescate microbiológico?</label>
+        <select id="iihRescateMicro_${idx}" onchange="toggleRescateDetalleIIH(${idx})">
+          <option value="" ${!entry.rescateMicro?'selected':''}>-- Elegir --</option>
+          <option value="No" ${entry.rescateMicro==='No'?'selected':''}>No</option>
+          <option value="Sí" ${entry.rescateMicro==='Sí'?'selected':''}>Sí</option>
+        </select>
+      </div>
+      <div id="iihRescateDetalleWrap_${idx}" style="${entry.rescateMicro==='Sí'?'':'display:none;'}">
+        <div class="field"><label>Germen aislado</label>
+          <select id="iihGermen_${idx}">
+            <option value="" ${!entry.germen?'selected':''}>-- Elegir --</option>
+            ${GERMEN_OPCIONES.map(op=>`<option value="${op}" ${entry.germen===op?'selected':''}>${op}</option>`).join('')}
+          </select>
+        </div>
+        <div class="field">
+          <label>Mecanismo de resistencia detectado (si no marcás ninguno, se considera sensible)</label>
+          <div style="display:flex; flex-wrap:wrap; gap:6px;">
+            ${MECANISMO_OPCIONES.map(op=>`<label style="display:flex; align-items:center; gap:4px; font-size:14.2px; font-weight:600; color:var(--ink); border:1px solid var(--line); border-radius:6px; padding:5px 8px;"><input type="checkbox" class="iihMecanismoCheck_${idx}" value="${op}" ${(entry.mecanismoResistencia||[]).includes(op)?'checked':''} style="width:auto;">${op}</label>`).join('')}
+          </div>
+        </div>
       </div>
       <button type="button" class="btn ghost" style="width:100%; border-color:var(--rot-bd); color:var(--rot-bd);" onclick="removeIIHEntry(${idx})">Quitar esta infección</button>
     </div>
@@ -1679,8 +1679,14 @@ function toggleRAMDetalle(idx){
 function toggleIntercurrenciasDetalle(){
   document.getElementById('intercurrenciasDetalleWrap').style.display = document.getElementById('cTuvoIntercurrencias').value==='Sí' ? '' : 'none';
 }
-function toggleRescateDetalle(){
-  document.getElementById('rescateDetalleWrap').style.display = document.getElementById('cRescateMicro').value==='Sí' ? '' : 'none';
+function toggleRescateDetalleIIH(idx){
+  document.getElementById('iihRescateDetalleWrap_'+idx).style.display = document.getElementById('iihRescateMicro_'+idx).value==='Sí' ? '' : 'none';
+}
+function construirTratamientoConGermen(iih){
+  let txt = iih.tratamiento || '';
+  if(iih.germen) txt += (txt ? ' — ' : '') + 'Germen: ' + iih.germen;
+  if(iih.mecanismoResistencia && iih.mecanismoResistencia.length) txt += ' (' + iih.mecanismoResistencia.join(', ') + ')';
+  return txt;
 }
 const DIAG_OPCIONES = [
   'Neumonía por Pneumocystis (PCP)','Toxoplasmosis cerebral','Candidiasis oro-esofágica','Criptococosis meníngea','Criptococosis diseminada sin compromiso SNC',
@@ -1837,16 +1843,23 @@ function saveClinico(){
   }));
   const comorbilidades = [...document.querySelectorAll('.comorbCheck:checked')].map(el=>el.value);
   const tuvoIIH = document.getElementById('cTuvoIIH').value;
-  const infeccionesIHDetalle = tuvoIIH==='Sí' ? activeIIHIndexes.map(idx=>({
-    tipo: document.getElementById('iihTipo_'+idx).value,
-    tratamiento: document.getElementById('iihTratamiento_'+idx).value.trim(),
-    fechaInicioTratamiento: document.getElementById('iihFechaInicio_'+idx).value,
-    fechaFinTratamiento: document.getElementById('iihContinuaAlta_'+idx).checked ? 'CONTINUA_AL_ALTA' : document.getElementById('iihFechaFin_'+idx).value
-  })).filter(e=>e.tipo) : [];
+  const infeccionesIHDetalle = tuvoIIH==='Sí' ? activeIIHIndexes.map(idx=>{
+    const rescateMicroEntry = document.getElementById('iihRescateMicro_'+idx).value;
+    return {
+      tipo: document.getElementById('iihTipo_'+idx).value,
+      tratamiento: document.getElementById('iihTratamiento_'+idx).value.trim(),
+      fechaInicioTratamiento: document.getElementById('iihFechaInicio_'+idx).value,
+      fechaFinTratamiento: document.getElementById('iihContinuaAlta_'+idx).checked ? 'CONTINUA_AL_ALTA' : document.getElementById('iihFechaFin_'+idx).value,
+      rescateMicro: rescateMicroEntry,
+      germen: rescateMicroEntry==='Sí' ? document.getElementById('iihGermen_'+idx).value : '',
+      mecanismoResistencia: rescateMicroEntry==='Sí' ? [...document.querySelectorAll('.iihMecanismoCheck_'+idx+':checked')].map(el=>el.value) : []
+    };
+  }).filter(e=>e.tipo) : [];
   const infeccionesIH = infeccionesIHDetalle.map(e=>e.tipo);
-  const rescateMicro = tuvoIIH==='Sí' ? document.getElementById('cRescateMicro').value : 'No';
-  const germen = rescateMicro==='Sí' ? document.getElementById('cGermen').value : '';
-  const mecanismoResistencia = rescateMicro==='Sí' ? [...document.querySelectorAll('.mecanismoCheck:checked')].map(el=>el.value) : [];
+  // Resumen general (para la columna de Historial) — derivado de lo cargado en cada infección
+  const rescateMicro = infeccionesIHDetalle.some(e=>e.rescateMicro==='Sí') ? 'Sí' : (infeccionesIHDetalle.length ? 'No' : '');
+  const germen = infeccionesIHDetalle.filter(e=>e.germen).map(e=>e.germen).join(', ');
+  const mecanismoResistencia = [...new Set(infeccionesIHDetalle.flatMap(e=>e.mecanismoResistencia||[]))];
   const sensibilidad = rescateMicro==='Sí' ? (mecanismoResistencia.length ? 'Con mecanismo de resistencia' : 'Sensible') : '';
   const tuvoIntercurrencias = document.getElementById('cTuvoIntercurrencias').value;
   const intercurrenciasDetalle = tuvoIntercurrencias==='Sí' ? activeIntercurrenciaIndexes.map(idx=>{
@@ -1981,7 +1994,7 @@ function saveClinico(){
         dni, nombre: clinicoRetroInfo.nombre, cama, egreso,
         categoria: iih.tipo,
         estado: 'Confirmado',
-        tratamiento: iih.tratamiento || '',
+        tratamiento: construirTratamientoConGermen(iih),
         fechaInicioTratamiento: iih.fechaInicioTratamiento || '', fechaFinTratamiento: iih.fechaFinTratamiento || ''
       };
       diagnosticosLog.push(diagIIH);
@@ -2318,7 +2331,7 @@ function obtenerDiagnosticosParaResumen(c){
     lista.push({
       categoria: iih.tipo,
       estado: 'Confirmado',
-      tratamiento: iih.tratamiento || '',
+      tratamiento: construirTratamientoConGermen(iih),
       fechaInicioTratamiento: iih.fechaInicioTratamiento||'',
       fechaFinTratamiento: iih.fechaFinTratamiento||''
     });
