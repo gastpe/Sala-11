@@ -1123,8 +1123,8 @@ function confirmEgreso(){
   if(c.tuvoTB==='Sí'){
     const diagTB = {
       dni: patient.dni, nombre: patient.nombre, cama: id, egreso: fecha,
-      categoria: 'Tuberculosis',
-      estado: c.confirmacionTB==='Confirmada' ? 'Confirmado' : 'Sospecha',
+      categoria: c.confirmacionTB==='Micobacteria atípica' ? 'Micobacteria atípica' : 'Tuberculosis',
+      estado: c.confirmacionTB==='Micobacteria atípica' ? 'Confirmado' : (c.confirmacionTB==='Confirmada' ? 'Confirmado' : (c.confirmacionTB==='Pendiente' ? 'Pendiente' : 'Sospecha')),
       tratamiento: c.tbTipoInicio || '',
       fechaInicioTratamiento: c.tbFechaInicioTratamiento || '', fechaFinTratamiento: c.tbFechaFinTratamiento || ''
     };
@@ -1417,6 +1417,7 @@ function renderClinicoFormHTML(c){
           <option value="Confirmada" ${c.confirmacionTB==='Confirmada'?'selected':''}>Confirmada (bacteriología/histología)</option>
           <option value="Pendiente" ${c.confirmacionTB==='Pendiente'?'selected':''}>Pendiente (muestras tomadas, resultado en estudio)</option>
           <option value="Empírico" ${c.confirmacionTB==='Empírico'?'selected':''}>Empírico (tratamiento sin muestras en estudio)</option>
+          <option value="Micobacteria atípica" ${c.confirmacionTB==='Micobacteria atípica'?'selected':''}>Micobacteria atípica (no TBC)</option>
         </select>
       </div>
       <div class="field"><label>Esquema de tratamiento</label>
@@ -1956,8 +1957,8 @@ function saveClinico(){
     if(clinico.tuvoTB==='Sí'){
       const diagTB = {
         dni, nombre: clinicoRetroInfo.nombre, cama, egreso,
-        categoria: 'Tuberculosis',
-        estado: clinico.confirmacionTB==='Confirmada' ? 'Confirmado' : 'Sospecha',
+        categoria: clinico.confirmacionTB==='Micobacteria atípica' ? 'Micobacteria atípica' : 'Tuberculosis',
+        estado: clinico.confirmacionTB==='Micobacteria atípica' ? 'Confirmado' : (clinico.confirmacionTB==='Confirmada' ? 'Confirmado' : (clinico.confirmacionTB==='Pendiente' ? 'Pendiente' : 'Sospecha')),
         tratamiento: clinico.tbTipoInicio || '',
         fechaInicioTratamiento: clinico.tbFechaInicioTratamiento || '', fechaFinTratamiento: clinico.tbFechaFinTratamiento || ''
       };
@@ -2297,8 +2298,8 @@ function obtenerDiagnosticosParaResumen(c){
     const esquemaTBTxt = c.esquemaTB==='Alternativo' ? 'Esquema alternativo' : (c.esquemaTB==='Clásico (HRZE)' ? 'Esquema clásico (HRZE)' : '');
     const tratamientoTB = [esquemaTBTxt, (c.tbTipoInicio==='Reinicio de tratamiento abandonado' || c.tbTipoInicio==='Continúa tratamiento') ? c.tbTipoInicio : ''].filter(Boolean).join(' — ');
     lista.push({
-      categoria: 'Tuberculosis',
-      estado: c.confirmacionTB==='Confirmada' ? 'Confirmado' : (c.confirmacionTB==='Pendiente' ? 'Pendiente' : 'Sospecha'),
+      categoria: c.confirmacionTB==='Micobacteria atípica' ? 'Micobacteria atípica' : 'Tuberculosis',
+      estado: c.confirmacionTB==='Micobacteria atípica' ? 'Confirmado' : (c.confirmacionTB==='Confirmada' ? 'Confirmado' : (c.confirmacionTB==='Pendiente' ? 'Pendiente' : 'Sospecha')),
       tratamiento: tratamientoTB,
       fechaInicioTratamiento: c.tbFechaInicioTratamiento||'',
       fechaFinTratamiento: c.tbFechaFinTratamiento||''
@@ -3987,7 +3988,7 @@ function renderReportes(){
   episodios.forEach(h=>{ if(h.diagnosticoVIH){ transmisionPeriodo[h.diagnosticoVIH] = (transmisionPeriodo[h.diagnosticoVIH]||0)+1; } });
 
   // Oportunistas vs no oportunistas (un diagnóstico con nombre fijo de la lista es oportunista; "No oportunista" y sus especificaciones, no)
-  const IO_NOMBRES = DIAG_OPCIONES.filter(op=>op!=='No oportunista (otra causa)').concat(['Tuberculosis']);
+  const IO_NOMBRES = DIAG_OPCIONES.filter(op=>op!=='No oportunista (otra causa)').concat(['Tuberculosis','Micobacteria atípica']);
   function contarOportunistas(diagCountsObj){
     let oportunistas=0, noOportunistas=0;
     Object.entries(diagCountsObj).forEach(([cat,count])=>{
@@ -4000,6 +4001,7 @@ function renderReportes(){
 
   // Detalle de tuberculosis: empírico vs dirigido, sitio de infección, y % diseminada (>2 sitios)
   const pacientesTBActual = activosClinico.filter(c=>c.tuvoTB==='Sí');
+  const tbMicobacteriaAtipicaActual = pacientesTBActual.filter(c=>c.confirmacionTB==='Micobacteria atípica').length;
   const tbEmpiricoActual = pacientesTBActual.filter(c=>c.confirmacionTB==='Empírico').length;
   const tbReinicioActual = pacientesTBActual.filter(c=>c.tbTipoInicio==='Reinicio de tratamiento abandonado').length;
   const tbInicioActual = pacientesTBActual.filter(c=>c.tbTipoInicio==='Inicio de tratamiento').length;
@@ -4015,6 +4017,7 @@ function renderReportes(){
   const pctTBDiseminadaActual = pacientesTBActual.length ? Math.round((tbDiseminadaCountActual/pacientesTBActual.length)*1000)/10 : 0;
 
   const pacientesTBPeriodo = episodios.filter(h=>h.tuvoTB==='Sí');
+  const tbMicobacteriaAtipicaPeriodo = pacientesTBPeriodo.filter(h=>h.confirmacionTB==='Micobacteria atípica').length;
   const tbEmpiricoPeriodo = pacientesTBPeriodo.filter(h=>h.confirmacionTB==='Empírico').length;
   const tbDirigidoPeriodo = pacientesTBPeriodo.filter(h=>h.confirmacionTB==='Confirmada').length;
   const tbReinicioPeriodo = pacientesTBPeriodo.filter(h=>h.tbTipoInicio==='Reinicio de tratamiento abandonado').length;
@@ -4309,7 +4312,7 @@ function renderReportes(){
     if(incluye('salaActualTransmision')) renderDonutChart('chartTransmisionActual', transmisionActual, null, false, true);
     if(incluye('salaActualOportunistas')) renderStackedBar('chartOportunistasActual', [{label:'Oportunistas', count:opActualSi, color:'#0B5E59'},{label:'No oportunistas', count:opActualNo, color:'#9AA5AD'}]);
     if(incluye('salaActualTB')){
-      renderStackedBar('chartTBEmpiricoActual', [{label:'Empírico', count:tbEmpiricoActual, color:'#B9821D'},{label:'Dirigido (confirmado)', count:tbDirigidoActual, color:'#0B5E59'}]);
+      renderStackedBar('chartTBEmpiricoActual', [{label:'Empírico', count:tbEmpiricoActual, color:'#B9821D'},{label:'Dirigido (confirmado)', count:tbDirigidoActual, color:'#0B5E59'},{label:'Micobacteria atípica (no TBC)', count:tbMicobacteriaAtipicaActual, color:'#6E4FA0'}]);
       renderStackedBar('chartTBInicioActual', [{label:'Inicio de tratamiento', count:tbInicioActual, color:'#0B5E59'},{label:'Reinicio de tratamiento abandonado', count:tbReinicioActual, color:'#C0392B'},{label:'Continúa tratamiento', count:tbContinuaActual, color:'#2563AF'},{label:'Sin especificar', count:tbTipoInicioSinEspecActual, color:'#9AA5AD'}]);
       renderBarChart('chartTBSitioActual', topTBSitioActual, '#0B5E59');
       renderPercentBars('chartTBDiseminadaActual', [{label:'TB diseminada (>2 sitios)', pct:pctTBDiseminadaActual, color:'#C0392B'}]);
@@ -4320,7 +4323,7 @@ function renderReportes(){
     if(incluye('oportunistasPeriodo')) renderStackedBar('chartOportunistasPeriodo', [{label:'Oportunistas', count:opPeriodoSi, color:'#0B5E59'},{label:'No oportunistas', count:opPeriodoNo, color:'#9AA5AD'}]);
     if(incluye('sifilisPeriodo')) renderPercentBars('chartSifilisPeriodo', [{label:'Sífilis diagnosticada en la internación', pct:pctSifilisPeriodo, color:'#C0392B'}]);
     if(incluye('tbPeriodo')){
-      renderStackedBar('chartTBEmpiricoPeriodo', [{label:'Empírico', count:tbEmpiricoPeriodo, color:'#B9821D'},{label:'Dirigido (confirmado)', count:tbDirigidoPeriodo, color:'#0B5E59'}]);
+      renderStackedBar('chartTBEmpiricoPeriodo', [{label:'Empírico', count:tbEmpiricoPeriodo, color:'#B9821D'},{label:'Dirigido (confirmado)', count:tbDirigidoPeriodo, color:'#0B5E59'},{label:'Micobacteria atípica (no TBC)', count:tbMicobacteriaAtipicaPeriodo, color:'#6E4FA0'}]);
       renderStackedBar('chartTBInicioPeriodo', [{label:'Inicio de tratamiento', count:tbInicioPeriodo, color:'#0B5E59'},{label:'Reinicio de tratamiento abandonado', count:tbReinicioPeriodo, color:'#C0392B'},{label:'Continúa tratamiento', count:tbContinuaPeriodo, color:'#2563AF'},{label:'Sin especificar', count:tbTipoInicioSinEspecPeriodo, color:'#9AA5AD'}]);
       renderBarChart('chartTBSitioPeriodo', topTBSitioPeriodo, '#0B5E59');
       renderPercentBars('chartTBDiseminadaPeriodo', [{label:'TB diseminada (>2 sitios)', pct:pctTBDiseminadaPeriodo, color:'#C0392B'}]);
