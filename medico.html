@@ -1123,8 +1123,8 @@ function confirmEgreso(){
   if(c.tuvoTB==='Sí'){
     const diagTB = {
       dni: patient.dni, nombre: patient.nombre, cama: id, egreso: fecha,
-      categoria: c.confirmacionTB==='Micobacteria atípica' ? 'Micobacteria atípica' : 'Tuberculosis',
-      estado: c.confirmacionTB==='Micobacteria atípica' ? 'Confirmado' : (c.confirmacionTB==='Confirmada' ? 'Confirmado' : (c.confirmacionTB==='Pendiente' ? 'Pendiente' : 'Sospecha')),
+      categoria: c.tipoMicobacteria==='No tuberculosis (atípica)' ? 'Micobacteria atípica' : 'Tuberculosis',
+      estado: c.confirmacionTB==='Confirmada' ? 'Confirmado' : (c.confirmacionTB==='Pendiente' ? 'Pendiente' : 'Sospecha'),
       tratamiento: c.tbTipoInicio || '',
       fechaInicioTratamiento: c.tbFechaInicioTratamiento || '', fechaFinTratamiento: c.tbFechaFinTratamiento || ''
     };
@@ -1380,7 +1380,7 @@ function renderClinicoFormHTML(c){
       </div>
     </details>
     <details class="ind-details">
-      <summary>5. Tuberculosis</summary>
+      <summary>5. Micobacteriosis</summary>
       <div class="ind-details-body">
     <div class="field"><label>¿Tuvo tuberculosis previamente (antes de esta internación)?</label>
       <select id="cTuvoTBPrevia" onchange="toggleTBPreviaDetalle()">
@@ -1405,6 +1405,13 @@ function renderClinicoFormHTML(c){
       </select>
     </div>
     <div id="tbDetalleWrap" style="${c.tuvoTB==='Sí'?'':'display:none;'}">
+      <div class="field"><label>Tipo de micobacteria</label>
+        <select id="cTipoMicobacteria">
+          <option value="" ${!c.tipoMicobacteria?'selected':''}>-- Elegir --</option>
+          <option value="Tuberculosis" ${c.tipoMicobacteria==='Tuberculosis'?'selected':''}>Tuberculosis</option>
+          <option value="No tuberculosis (atípica)" ${c.tipoMicobacteria==='No tuberculosis (atípica)'?'selected':''}>No tuberculosis (atípica)</option>
+        </select>
+      </div>
       <div class="field"><label>Forma clínica</label>
         <div style="display:flex; flex-wrap:wrap; gap:6px; margin-bottom:6px;">
           ${TB_FORMA_OPCIONES.map(op=>`<label style="display:flex; align-items:center; gap:4px; font-size:14.2px; font-weight:600; color:var(--ink); border:1px solid var(--line); border-radius:6px; padding:5px 8px;"><input type="checkbox" class="tbFormaCheck" value="${op}" ${(c.formaClinicaTB||[]).includes(op)?'checked':''} style="width:auto;">${op}</label>`).join('')}
@@ -1417,7 +1424,6 @@ function renderClinicoFormHTML(c){
           <option value="Confirmada" ${c.confirmacionTB==='Confirmada'?'selected':''}>Confirmada (bacteriología/histología)</option>
           <option value="Pendiente" ${c.confirmacionTB==='Pendiente'?'selected':''}>Pendiente (muestras tomadas, resultado en estudio)</option>
           <option value="Empírico" ${c.confirmacionTB==='Empírico'?'selected':''}>Empírico (tratamiento sin muestras en estudio)</option>
-          <option value="Micobacteria atípica" ${c.confirmacionTB==='Micobacteria atípica'?'selected':''}>Micobacteria atípica (no TBC)</option>
         </select>
       </div>
       <div class="field"><label>Esquema de tratamiento</label>
@@ -1872,6 +1878,7 @@ function saveClinico(){
     tuvoTB: document.getElementById('cTuvoTB').value,
     formaClinicaTB: document.getElementById('cTuvoTB').value==='Sí' ? [...document.querySelectorAll('.tbFormaCheck:checked')].map(el=>el.value) : [],
     formaClinicaTBOtra: document.getElementById('cTuvoTB').value==='Sí' ? document.getElementById('cFormaTBOtra').value.trim() : '',
+    tipoMicobacteria: document.getElementById('cTuvoTB').value==='Sí' ? document.getElementById('cTipoMicobacteria').value : '',
     confirmacionTB: document.getElementById('cTuvoTB').value==='Sí' ? document.getElementById('cConfirmacionTB').value : '',
     esquemaTB: document.getElementById('cTuvoTB').value==='Sí' ? document.getElementById('cEsquemaTB').value : '',
     causaEsquemaTB: (document.getElementById('cTuvoTB').value==='Sí' && document.getElementById('cEsquemaTB').value==='Alternativo') ? document.getElementById('cCausaEsquemaTB').value : '',
@@ -1918,6 +1925,7 @@ function saveClinico(){
       esquemaTB: clinico.esquemaTB || '',
       causaEsquemaTB: clinico.esquemaTB==='Alternativo' ? (clinico.causaEsquemaTB==='Otro' ? (clinico.causaEsquemaTBOtra||'Otro') : (clinico.causaEsquemaTB||'')) : '',
       tbTipoInicio: clinico.tuvoTB==='Sí' ? (clinico.tbTipoInicio||'') : '',
+      tipoMicobacteria: clinico.tuvoTB==='Sí' ? (clinico.tipoMicobacteria||'') : '',
       internacionPreviaOtroLugar: clinico.internacionPreviaOtroLugar || 'No',
       tiempoInternacionPreviaOtroLugar: clinico.internacionPreviaOtroLugar==='Sí' ? (clinico.tiempoInternacionPreviaOtroLugar||'') : '',
       internacionPreviaPorIO: clinico.internacionPreviaOtroLugar==='Sí' ? (clinico.internacionPreviaPorIO||'') : '',
@@ -1957,8 +1965,8 @@ function saveClinico(){
     if(clinico.tuvoTB==='Sí'){
       const diagTB = {
         dni, nombre: clinicoRetroInfo.nombre, cama, egreso,
-        categoria: clinico.confirmacionTB==='Micobacteria atípica' ? 'Micobacteria atípica' : 'Tuberculosis',
-        estado: clinico.confirmacionTB==='Micobacteria atípica' ? 'Confirmado' : (clinico.confirmacionTB==='Confirmada' ? 'Confirmado' : (clinico.confirmacionTB==='Pendiente' ? 'Pendiente' : 'Sospecha')),
+        categoria: clinico.tipoMicobacteria==='No tuberculosis (atípica)' ? 'Micobacteria atípica' : 'Tuberculosis',
+        estado: clinico.confirmacionTB==='Confirmada' ? 'Confirmado' : (clinico.confirmacionTB==='Pendiente' ? 'Pendiente' : 'Sospecha'),
         tratamiento: clinico.tbTipoInicio || '',
         fechaInicioTratamiento: clinico.tbFechaInicioTratamiento || '', fechaFinTratamiento: clinico.tbFechaFinTratamiento || ''
       };
@@ -2298,8 +2306,8 @@ function obtenerDiagnosticosParaResumen(c){
     const esquemaTBTxt = c.esquemaTB==='Alternativo' ? 'Esquema alternativo' : (c.esquemaTB==='Clásico (HRZE)' ? 'Esquema clásico (HRZE)' : '');
     const tratamientoTB = [esquemaTBTxt, (c.tbTipoInicio==='Reinicio de tratamiento abandonado' || c.tbTipoInicio==='Continúa tratamiento') ? c.tbTipoInicio : ''].filter(Boolean).join(' — ');
     lista.push({
-      categoria: c.confirmacionTB==='Micobacteria atípica' ? 'Micobacteria atípica' : 'Tuberculosis',
-      estado: c.confirmacionTB==='Micobacteria atípica' ? 'Confirmado' : (c.confirmacionTB==='Confirmada' ? 'Confirmado' : (c.confirmacionTB==='Pendiente' ? 'Pendiente' : 'Sospecha')),
+      categoria: c.tipoMicobacteria==='No tuberculosis (atípica)' ? 'Micobacteria atípica' : 'Tuberculosis',
+      estado: c.confirmacionTB==='Confirmada' ? 'Confirmado' : (c.confirmacionTB==='Pendiente' ? 'Pendiente' : 'Sospecha'),
       tratamiento: tratamientoTB,
       fechaInicioTratamiento: c.tbFechaInicioTratamiento||'',
       fechaFinTratamiento: c.tbFechaFinTratamiento||''
@@ -3555,7 +3563,7 @@ function exportarHistorialCSV(){
     ['tarvDrogas','TARVDrogas'],
     ['tuvoTBPrevia','TuvoTBPrevia'],['completoTratamientoTBPrevia','CompletoTratamientoTBPrevia'],
     ['tuvoTB','TuvoTB'],['formaClinicaTB','FormaClinicaTB'],
-    ['confirmacionTB','ConfirmacionTB'],
+    ['confirmacionTB','ConfirmacionTB'],['tipoMicobacteria','TipoMicobacteria'],
     ['esquemaTB','EsquemaTB'],['causaEsquemaTB','CausaEsquemaTB'],['tbTipoInicio','TBTipoInicio'],
     ['internacionPreviaOtroLugar','InternacionPreviaOtroLugar'],['tiempoInternacionPreviaOtroLugar','TiempoInternacionPreviaOtroLugar'],['internacionPreviaPorIO','InternacionPreviaPorIO'],
     ['antecedenteSifilis','AntecedenteSifilis'],['vdrl','VDRL'],['vdrlDilucion','VDRLDilucion'],['vdrlInterpretacion','VDRLInterpretacion'],
@@ -3634,6 +3642,7 @@ function armarEntradaHistorial(patient, id, fecha, motivo){
     esquemaTB: c.esquemaTB || '',
     causaEsquemaTB: c.esquemaTB==='Alternativo' ? (c.causaEsquemaTB==='Otro' ? (c.causaEsquemaTBOtra||'Otro') : (c.causaEsquemaTB||'')) : '',
     tbTipoInicio: c.tuvoTB==='Sí' ? (c.tbTipoInicio||'') : '',
+    tipoMicobacteria: c.tuvoTB==='Sí' ? (c.tipoMicobacteria||'') : '',
     internacionPreviaOtroLugar: c.internacionPreviaOtroLugar || '',
     tiempoInternacionPreviaOtroLugar: c.internacionPreviaOtroLugar==='Sí' ? (c.tiempoInternacionPreviaOtroLugar||'') : '',
     internacionPreviaPorIO: c.internacionPreviaOtroLugar==='Sí' ? (c.internacionPreviaPorIO||'') : '',
@@ -4001,13 +4010,13 @@ function renderReportes(){
 
   // Detalle de tuberculosis: empírico vs dirigido, sitio de infección, y % diseminada (>2 sitios)
   const pacientesTBActual = activosClinico.filter(c=>c.tuvoTB==='Sí');
-  const tbMicobacteriaAtipicaActual = pacientesTBActual.filter(c=>c.confirmacionTB==='Micobacteria atípica').length;
-  const tbEmpiricoActual = pacientesTBActual.filter(c=>c.confirmacionTB==='Empírico').length;
+  const tbMicobacteriaAtipicaActual = pacientesTBActual.filter(c=>c.tipoMicobacteria==='No tuberculosis (atípica)').length;
+  const tbEmpiricoActual = pacientesTBActual.filter(c=>c.confirmacionTB==='Empírico' && c.tipoMicobacteria!=='No tuberculosis (atípica)').length;
   const tbReinicioActual = pacientesTBActual.filter(c=>c.tbTipoInicio==='Reinicio de tratamiento abandonado').length;
   const tbInicioActual = pacientesTBActual.filter(c=>c.tbTipoInicio==='Inicio de tratamiento').length;
   const tbContinuaActual = pacientesTBActual.filter(c=>c.tbTipoInicio==='Continúa tratamiento').length;
   const tbTipoInicioSinEspecActual = pacientesTBActual.length - tbReinicioActual - tbInicioActual - tbContinuaActual;
-  const tbDirigidoActual = pacientesTBActual.filter(c=>c.confirmacionTB==='Confirmada').length;
+  const tbDirigidoActual = pacientesTBActual.filter(c=>c.confirmacionTB==='Confirmada' && c.tipoMicobacteria!=='No tuberculosis (atípica)').length;
   const tbSitioCountsActual = {};
   pacientesTBActual.forEach(c=>{
     (c.formaClinicaTB||[]).forEach(sitio=>{ tbSitioCountsActual[sitio] = (tbSitioCountsActual[sitio]||0)+1; });
@@ -4017,9 +4026,9 @@ function renderReportes(){
   const pctTBDiseminadaActual = pacientesTBActual.length ? Math.round((tbDiseminadaCountActual/pacientesTBActual.length)*1000)/10 : 0;
 
   const pacientesTBPeriodo = episodios.filter(h=>h.tuvoTB==='Sí');
-  const tbMicobacteriaAtipicaPeriodo = pacientesTBPeriodo.filter(h=>h.confirmacionTB==='Micobacteria atípica').length;
-  const tbEmpiricoPeriodo = pacientesTBPeriodo.filter(h=>h.confirmacionTB==='Empírico').length;
-  const tbDirigidoPeriodo = pacientesTBPeriodo.filter(h=>h.confirmacionTB==='Confirmada').length;
+  const tbMicobacteriaAtipicaPeriodo = pacientesTBPeriodo.filter(h=>h.tipoMicobacteria==='No tuberculosis (atípica)').length;
+  const tbEmpiricoPeriodo = pacientesTBPeriodo.filter(h=>h.confirmacionTB==='Empírico' && h.tipoMicobacteria!=='No tuberculosis (atípica)').length;
+  const tbDirigidoPeriodo = pacientesTBPeriodo.filter(h=>h.confirmacionTB==='Confirmada' && h.tipoMicobacteria!=='No tuberculosis (atípica)').length;
   const tbReinicioPeriodo = pacientesTBPeriodo.filter(h=>h.tbTipoInicio==='Reinicio de tratamiento abandonado').length;
   const tbInicioPeriodo = pacientesTBPeriodo.filter(h=>h.tbTipoInicio==='Inicio de tratamiento').length;
   const tbContinuaPeriodo = pacientesTBPeriodo.filter(h=>h.tbTipoInicio==='Continúa tratamiento').length;
@@ -4162,7 +4171,7 @@ function renderReportes(){
       <div id="chartOportunistasActual" style="margin-bottom:6px;"></div>` : ''}
 
       ${incluye('salaActualTB') ? `
-      <h4 style="font-size:14.5px; color:var(--teal-dark); margin:14px 0 8px;">TUBERCULOSIS: EMPÍRICO VS. DIRIGIDO</h4>
+      <h4 style="font-size:14.5px; color:var(--teal-dark); margin:14px 0 8px;">MICOBACTERIOSIS: TIPO Y ABORDAJE DIAGNÓSTICO</h4>
       <div id="chartTBEmpiricoActual" style="margin-bottom:12px;"></div>
       <h4 style="font-size:14.5px; color:var(--teal-dark); margin:14px 0 8px;">TUBERCULOSIS: INICIO, REINICIO O CONTINUIDAD DEL TRATAMIENTO</h4>
       <div id="chartTBInicioActual" style="margin-bottom:12px;"></div>
@@ -4208,7 +4217,7 @@ function renderReportes(){
     <div id="chartSifilisPeriodo" style="margin-bottom:22px;"></div>` : ''}
 
     ${incluye('tbPeriodo') ? `
-    <h3 style="font-size:16.5px; color:var(--teal-dark); margin-bottom:10px;">DETALLE DE TUBERCULOSIS (EGRESOS + INTERNADOS)</h3>
+    <h3 style="font-size:16.5px; color:var(--teal-dark); margin-bottom:10px;">DETALLE DE MICOBACTERIOSIS (EGRESOS + INTERNADOS)</h3>
     <h4 style="font-size:14.5px; color:var(--teal-dark); margin-bottom:8px;">Empírico vs. dirigido</h4>
     <div id="chartTBEmpiricoPeriodo" style="margin-bottom:16px;"></div>
     <h4 style="font-size:14.5px; color:var(--teal-dark); margin-bottom:8px;">TUBERCULOSIS: INICIO, REINICIO O CONTINUIDAD DEL TRATAMIENTO</h4>
