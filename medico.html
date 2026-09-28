@@ -988,13 +988,22 @@ function saveBed(){
     const clinicoInicial = entradaUTI
       ? { evolucion: '📌 Pasó por UTI desde el ' + entradaUTI.egreso + ' hasta el ' + new Date().toLocaleDateString('es-AR') + ' (regresó a sala).' }
       : (existing && existing.clinico);
-    beds[id] = { status:'ocupada', patient:{ nombre, dni, tipoDocumento, medico, obraSocial, aislamiento, procedencia, fechaIngresoHospital, fechaIngresoSala, clinico: clinicoInicial, indicaciones: existing && existing.indicaciones, pendientes: existing && existing.pendientes } };
+    // Los días que pasó en UTI no cuentan como ocupación real de una cama de Sala 11 (se usan en el
+    // reporte de ocupación diaria para no representarlos como si el paciente hubiera estado en la sala).
+    const pasesUTI = entradaUTI
+      ? [...(entradaUTI.pasesUTI || []), { desde: entradaUTI.egreso, hasta: new Date().toLocaleDateString('es-AR') }]
+      : ((existing && existing.pasesUTI) || []);
+    beds[id] = { status:'ocupada', patient:{ nombre, dni, tipoDocumento, medico, obraSocial, aislamiento, procedencia, fechaIngresoHospital, fechaIngresoSala, pasesUTI, clinico: clinicoInicial, indicaciones: existing && existing.indicaciones, pendientes: existing && existing.pendientes } };
 
     if(entradaUTI){
       // Fusionar: sacar la fila de "Pase a UTI" del historial (local y en la planilla) y cerrar la notita de seguimiento.
       // Los diagnósticos que se hubieran cargado antes de ese pase a UTI NO se tocan — siguen siendo válidos.
-      historial = historial.filter(h => h !== entradaUTI);
-      pendingHistorialAppends = pendingHistorialAppends.filter(h => h !== entradaUTI);
+      // Se compara por contenido (DNI+cama+egreso), no por referencia de objeto: si la página se
+      // recargó entre el "Pase a UTI" y este regreso, "entradaUTI" puede ser un objeto reconstruido
+      // desde la planilla, distinto en memoria al que efectivamente está en "historial" ahora mismo.
+      const esLaMismaEntradaUTI = h => h.dni===entradaUTI.dni && h.cama===entradaUTI.cama && h.egreso===entradaUTI.egreso;
+      historial = historial.filter(h => !esLaMismaEntradaUTI(h));
+      pendingHistorialAppends = pendingHistorialAppends.filter(h => !esLaMismaEntradaUTI(h));
       notas = notas.filter(n => !(n.tipo==='uti' && n.dni===entradaUTI.dni && n.cama===entradaUTI.cama && n.egreso===entradaUTI.egreso));
       renderNotas();
       pendingMergeUTI = { dni: entradaUTI.dni, cama: entradaUTI.cama, egreso: entradaUTI.egreso };
@@ -3605,6 +3614,7 @@ function armarEntradaHistorial(patient, id, fecha, motivo){
   const c = patient.clinico || {};
   return {
     dni: patient.dni, tipoDocumento: patient.tipoDocumento || 'DNI', nombre: patient.nombre, cama: id, medico: patient.medico || '', obraSocial: patient.obraSocial ? 'Sí' : 'No', procedencia: patient.procedencia || '',
+    pasesUTI: patient.pasesUTI || [],
     fechaNacimiento: c.fechaNacimiento || '', edad: c.edad || '',
     nacionalidad: (c.nacionalidad==='Otro' ? (c.nacionalidadOtra||'Otro') : c.nacionalidad) || '',
     situacionVivienda: c.situacionVivienda || '',
@@ -3701,15 +3711,34 @@ function computeOcupacionDiaria(desde, hasta){
   const sinFechas = !desde && !hasta;
   const ini = desde ? inicioDia(desde) : new Date(fin.getFullYear(), fin.getMonth(), fin.getDate()-29);
   if(ini > fin) return { labels:[], values:[], vacio:true, agrupado:false, descripcion:'El rango elegido no incluye ningún día pasado ni el de hoy.', resumenTexto:'' };
+  // Resta de cada rango los tramos que el paciente pasó en UTI (no fueron ocupación real de Sala 11).
+  // Se excluyen los días completos ENTRE el pase y el regreso; el día del pase y el del regreso cuentan
+  // como ocupación de Sala 11 (el paciente estuvo parte de ese día en la sala).
+  function segmentosSinUTI(inicioMs, finMs, pasesUTI){
+    let segmentos = [[inicioMs, finMs]];
+    (pasesUTI||[]).forEach(p=>{
+      const gIni = parseEsAr(p.desde), gFin = parseEsAr(p.hasta);
+      if(!gIni || !gFin) return;
+      const gIniMs = inicioDia(gIni).getTime(), gFinMs = inicioDia(gFin).getTime();
+      const nuevos = [];
+      segmentos.forEach(([s,e])=>{
+        if(gFinMs <= s || gIniMs >= e){ nuevos.push([s,e]); return; }
+        if(gIniMs > s) nuevos.push([s, gIniMs]);
+        if(gFinMs < e) nuevos.push([gFinMs, e]);
+      });
+      segmentos = nuevos;
+    });
+    return segmentos.filter(([s,e])=>s<=e);
+  }
   const rangos = [];
   historial.forEach(h=>{
     const ing = parseEsAr(h.ingresoSala), eg = parseEsAr(h.egreso);
-    if(ing && eg) rangos.push([inicioDia(ing).getTime(), inicioDia(eg).getTime()]);
+    if(ing && eg) segmentosSinUTI(inicioDia(ing).getTime(), inicioDia(eg).getTime(), h.pasesUTI).forEach(r=>rangos.push(r));
   });
   Object.values(beds).forEach(b=>{
     if(b.status!=='ocupada' || !b.patient) return;
     const ing = parseEsAr(b.patient.fechaIngresoSala);
-    if(ing) rangos.push([inicioDia(ing).getTime(), hoy.getTime()]);
+    if(ing) segmentosSinUTI(inicioDia(ing).getTime(), hoy.getTime(), b.patient.pasesUTI).forEach(r=>rangos.push(r));
   });
   const dias = [];
   for(let d = new Date(ini); d <= fin; d = new Date(d.getFullYear(), d.getMonth(), d.getDate()+1)){
@@ -3740,7 +3769,7 @@ function computeOcupacionDiaria(desde, hasta){
   return {
     labels, values, agrupado, vacio:false,
     descripcion: (sinFechas ? 'Sin fechas elegidas: se muestran los últimos 30 días. ' : 'Del '+fFull(ini)+' al '+fFull(fin)+' ('+dias.length+' días). ')
-      + 'Sobre 20 camas' + (agrupado ? '; agrupado por semana (promedio semanal).' : '.'),
+      + 'Sobre 20 camas, sin contar los días que un paciente pasó en UTI' + (agrupado ? '; agrupado por semana (promedio semanal).' : '.'),
     resumenTexto: 'Promedio <strong>'+prom+'%</strong> · Máximo <strong>'+max.pct+'%</strong> ('+fmt(max.fecha)+') · Mínimo <strong>'+min.pct+'%</strong> ('+fmt(min.fecha)+')'
   };
 }
