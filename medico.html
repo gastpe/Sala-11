@@ -1517,7 +1517,7 @@ const RAM_OPCIONES = ['Alergia','Farmacodermia','Hepatotoxicidad','Neurotoxicida
 const GERMEN_OPCIONES = ['SAMS','SAMR','Proteus','E. coli','Klebsiella','Enterococo','ABA (Acinetobacter baumannii)','PAE (Pseudomonas aeruginosa)','Clostridium difficile','Otro'];
 const MECANISMO_OPCIONES = ['BLEE','AMPc','KPC','MBL','OXA','EVR'];
 const TB_SITUACION_OPCIONES = ['Primer episodio (sin antecedente de TB)','Recaída / reinfección','Retoma tratamiento abandonado','Fracaso terapéutico'];
-const TB_TIPO_INICIO_OPCIONES = ['Inicio de tratamiento','Reinicio de tratamiento abandonado'];
+const TB_TIPO_INICIO_OPCIONES = ['Inicio de tratamiento','Reinicio de tratamiento abandonado','Continúa tratamiento'];
 const TB_FORMA_OPCIONES = ['Pulmonar','Miliar/diseminada','Meníngea/SNC','Ganglionar','Pleural','Ósea/osteoarticular','Vertebral','Digestiva/abdominal','Otra'];
 const NACIONALIDAD_OPCIONES = ['Argentina','Bolivia','Brasil','Chile','Colombia','Ecuador','Paraguay','Perú','Uruguay','Venezuela','Otro'];
 const TB_CAUSA_ESQUEMA_OPCIONES = ['Hepatotoxicidad','Farmacodermia','Intolerancia','Resistencia','Otro'];
@@ -2286,7 +2286,7 @@ function obtenerDiagnosticosParaResumen(c){
   }));
   if(c.tuvoTB==='Sí'){
     const esquemaTBTxt = c.esquemaTB==='Alternativo' ? 'Esquema alternativo' : (c.esquemaTB==='Clásico (HRZE)' ? 'Esquema clásico (HRZE)' : '');
-    const tratamientoTB = [esquemaTBTxt, c.tbTipoInicio==='Reinicio de tratamiento abandonado' ? 'Reinicio de tratamiento abandonado' : ''].filter(Boolean).join(' — ');
+    const tratamientoTB = [esquemaTBTxt, (c.tbTipoInicio==='Reinicio de tratamiento abandonado' || c.tbTipoInicio==='Continúa tratamiento') ? c.tbTipoInicio : ''].filter(Boolean).join(' — ');
     lista.push({
       categoria: 'Tuberculosis',
       estado: c.confirmacionTB==='Confirmada' ? 'Confirmado' : (c.confirmacionTB==='Pendiente' ? 'Pendiente' : 'Sospecha'),
@@ -3968,7 +3968,8 @@ function renderReportes(){
   const tbEmpiricoActual = pacientesTBActual.filter(c=>c.confirmacionTB==='Empírico').length;
   const tbReinicioActual = pacientesTBActual.filter(c=>c.tbTipoInicio==='Reinicio de tratamiento abandonado').length;
   const tbInicioActual = pacientesTBActual.filter(c=>c.tbTipoInicio==='Inicio de tratamiento').length;
-  const tbTipoInicioSinEspecActual = pacientesTBActual.length - tbReinicioActual - tbInicioActual;
+  const tbContinuaActual = pacientesTBActual.filter(c=>c.tbTipoInicio==='Continúa tratamiento').length;
+  const tbTipoInicioSinEspecActual = pacientesTBActual.length - tbReinicioActual - tbInicioActual - tbContinuaActual;
   const tbDirigidoActual = pacientesTBActual.filter(c=>c.confirmacionTB==='Confirmada').length;
   const tbSitioCountsActual = {};
   pacientesTBActual.forEach(c=>{
@@ -3983,7 +3984,8 @@ function renderReportes(){
   const tbDirigidoPeriodo = pacientesTBPeriodo.filter(h=>h.confirmacionTB==='Confirmada').length;
   const tbReinicioPeriodo = pacientesTBPeriodo.filter(h=>h.tbTipoInicio==='Reinicio de tratamiento abandonado').length;
   const tbInicioPeriodo = pacientesTBPeriodo.filter(h=>h.tbTipoInicio==='Inicio de tratamiento').length;
-  const tbTipoInicioSinEspecPeriodo = pacientesTBPeriodo.length - tbReinicioPeriodo - tbInicioPeriodo;
+  const tbContinuaPeriodo = pacientesTBPeriodo.filter(h=>h.tbTipoInicio==='Continúa tratamiento').length;
+  const tbTipoInicioSinEspecPeriodo = pacientesTBPeriodo.length - tbReinicioPeriodo - tbInicioPeriodo - tbContinuaPeriodo;
   const tbSitioCountsPeriodo = {};
   pacientesTBPeriodo.forEach(h=>{
     (h.formaClinicaTB||'').split(', ').map(s=>s.trim()).filter(Boolean).forEach(sitio=>{
@@ -4124,7 +4126,7 @@ function renderReportes(){
       ${incluye('salaActualTB') ? `
       <h4 style="font-size:14.5px; color:var(--teal-dark); margin:14px 0 8px;">TUBERCULOSIS: EMPÍRICO VS. DIRIGIDO</h4>
       <div id="chartTBEmpiricoActual" style="margin-bottom:12px;"></div>
-      <h4 style="font-size:14.5px; color:var(--teal-dark); margin:14px 0 8px;">TUBERCULOSIS: INICIO VS. REINICIO DE TRATAMIENTO ABANDONADO</h4>
+      <h4 style="font-size:14.5px; color:var(--teal-dark); margin:14px 0 8px;">TUBERCULOSIS: INICIO, REINICIO O CONTINUIDAD DEL TRATAMIENTO</h4>
       <div id="chartTBInicioActual" style="margin-bottom:12px;"></div>
       <h4 style="font-size:14.5px; color:var(--teal-dark); margin:14px 0 8px;">TUBERCULOSIS: SITIO DE INFECCIÓN</h4>
       <div id="chartTBSitioActual" style="margin-bottom:12px;"></div>
@@ -4171,7 +4173,7 @@ function renderReportes(){
     <h3 style="font-size:16.5px; color:var(--teal-dark); margin-bottom:10px;">DETALLE DE TUBERCULOSIS (EGRESOS + INTERNADOS)</h3>
     <h4 style="font-size:14.5px; color:var(--teal-dark); margin-bottom:8px;">Empírico vs. dirigido</h4>
     <div id="chartTBEmpiricoPeriodo" style="margin-bottom:16px;"></div>
-    <h4 style="font-size:14.5px; color:var(--teal-dark); margin-bottom:8px;">TUBERCULOSIS: INICIO VS. REINICIO DE TRATAMIENTO ABANDONADO</h4>
+    <h4 style="font-size:14.5px; color:var(--teal-dark); margin-bottom:8px;">TUBERCULOSIS: INICIO, REINICIO O CONTINUIDAD DEL TRATAMIENTO</h4>
     <div id="chartTBInicioPeriodo" style="margin-bottom:16px;"></div>
     <h4 style="font-size:14.5px; color:var(--teal-dark); margin-bottom:8px;">Sitio de infección</h4>
     <div id="chartTBSitioPeriodo" style="margin-bottom:16px;"></div>
@@ -4273,7 +4275,7 @@ function renderReportes(){
     if(incluye('salaActualOportunistas')) renderStackedBar('chartOportunistasActual', [{label:'Oportunistas', count:opActualSi, color:'#0B5E59'},{label:'No oportunistas', count:opActualNo, color:'#9AA5AD'}]);
     if(incluye('salaActualTB')){
       renderStackedBar('chartTBEmpiricoActual', [{label:'Empírico', count:tbEmpiricoActual, color:'#B9821D'},{label:'Dirigido (confirmado)', count:tbDirigidoActual, color:'#0B5E59'}]);
-      renderStackedBar('chartTBInicioActual', [{label:'Inicio de tratamiento', count:tbInicioActual, color:'#0B5E59'},{label:'Reinicio de tratamiento abandonado', count:tbReinicioActual, color:'#C0392B'},{label:'Sin especificar', count:tbTipoInicioSinEspecActual, color:'#9AA5AD'}]);
+      renderStackedBar('chartTBInicioActual', [{label:'Inicio de tratamiento', count:tbInicioActual, color:'#0B5E59'},{label:'Reinicio de tratamiento abandonado', count:tbReinicioActual, color:'#C0392B'},{label:'Continúa tratamiento', count:tbContinuaActual, color:'#2563AF'},{label:'Sin especificar', count:tbTipoInicioSinEspecActual, color:'#9AA5AD'}]);
       renderBarChart('chartTBSitioActual', topTBSitioActual, '#0B5E59');
       renderPercentBars('chartTBDiseminadaActual', [{label:'TB diseminada (>2 sitios)', pct:pctTBDiseminadaActual, color:'#C0392B'}]);
     }
@@ -4284,7 +4286,7 @@ function renderReportes(){
     if(incluye('sifilisPeriodo')) renderPercentBars('chartSifilisPeriodo', [{label:'Sífilis diagnosticada en la internación', pct:pctSifilisPeriodo, color:'#C0392B'}]);
     if(incluye('tbPeriodo')){
       renderStackedBar('chartTBEmpiricoPeriodo', [{label:'Empírico', count:tbEmpiricoPeriodo, color:'#B9821D'},{label:'Dirigido (confirmado)', count:tbDirigidoPeriodo, color:'#0B5E59'}]);
-      renderStackedBar('chartTBInicioPeriodo', [{label:'Inicio de tratamiento', count:tbInicioPeriodo, color:'#0B5E59'},{label:'Reinicio de tratamiento abandonado', count:tbReinicioPeriodo, color:'#C0392B'},{label:'Sin especificar', count:tbTipoInicioSinEspecPeriodo, color:'#9AA5AD'}]);
+      renderStackedBar('chartTBInicioPeriodo', [{label:'Inicio de tratamiento', count:tbInicioPeriodo, color:'#0B5E59'},{label:'Reinicio de tratamiento abandonado', count:tbReinicioPeriodo, color:'#C0392B'},{label:'Continúa tratamiento', count:tbContinuaPeriodo, color:'#2563AF'},{label:'Sin especificar', count:tbTipoInicioSinEspecPeriodo, color:'#9AA5AD'}]);
       renderBarChart('chartTBSitioPeriodo', topTBSitioPeriodo, '#0B5E59');
       renderPercentBars('chartTBDiseminadaPeriodo', [{label:'TB diseminada (>2 sitios)', pct:pctTBDiseminadaPeriodo, color:'#C0392B'}]);
     }
