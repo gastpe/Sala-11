@@ -3778,23 +3778,29 @@ function renderOcupacionDiariaChart(containerId, oc){
   if(!el) return;
   if(!oc || oc.vacio || !oc.values.length){ el.innerHTML = '<p style="color:var(--ink-soft); font-size:15px;">Sin datos en este rango.</p>'; return; }
   const n = oc.values.length;
-  const w = 560, h = 210, padL = 40, padB = 30, padT = 14, padR = 10;
+  // Más barras = gráfico más ancho (no se achican por debajo de un mínimo legible), con scroll horizontal si no entra.
+  const w = Math.max(560, n*26), h = 240, padL = 40, padB = 34, padT = 26, padR = 10;
   const plotW = w-padL-padR, plotH = h-padT-padB;
-  const gap = plotW/n, barW = Math.max(2, gap*0.72);
-  const mostrarValores = n <= 16;
-  const cadaN = Math.max(1, Math.ceil(n/8));
+  const gap = plotW/n, barW = Math.max(3, gap*0.72);
+  // Con barras angostas, el valor no entra horizontal arriba: se rota 90° para que siempre se lea.
+  const rotarValores = barW < 22;
+  const cadaN = Math.max(1, Math.ceil(n/12));
   const color = v => v>=95 ? '#C0392B' : (v>=80 ? '#B9821D' : '#0B5E59');
-  const grid = [0,50,100].map(gv=>{
+  const grid = [0,25,50,75,100].map(gv=>{
     const y = padT+plotH-(gv/100)*plotH;
     return '<line x1="'+padL+'" y1="'+y+'" x2="'+(w-padR)+'" y2="'+y+'" stroke="#E5E9EC" stroke-width="1"/><text x="'+(padL-6)+'" y="'+(y+4)+'" font-size="11" fill="#8A93A0" text-anchor="end">'+gv+'%</text>';
   }).join('');
   const bars = oc.values.map((v,i)=>{
     const bh = (v/100)*plotH, x = padL+i*gap+(gap-barW)/2, y = padT+plotH-bh;
-    return '<rect x="'+x.toFixed(1)+'" y="'+y.toFixed(1)+'" width="'+barW.toFixed(1)+'" height="'+Math.max(bh,1).toFixed(1)+'" rx="2" fill="'+color(v)+'"/>'
-      + (mostrarValores ? '<text x="'+(x+barW/2).toFixed(1)+'" y="'+(y-4).toFixed(1)+'" font-size="10.5" fill="'+color(v)+'" text-anchor="middle" font-weight="700">'+v+'%</text>' : '')
-      + (i % cadaN === 0 ? '<text x="'+(x+barW/2).toFixed(1)+'" y="'+(h-9)+'" font-size="10.5" fill="#55636F" text-anchor="middle">'+oc.labels[i]+'</text>' : '');
+    const cx = (x+barW/2).toFixed(1);
+    const valorTxt = rotarValores
+      ? '<text x="'+cx+'" y="'+(y-4).toFixed(1)+'" font-size="9.5" fill="'+color(v)+'" text-anchor="start" font-weight="700" transform="rotate(-60 '+cx+' '+(y-4).toFixed(1)+')">'+v+'%</text>'
+      : '<text x="'+cx+'" y="'+(y-5).toFixed(1)+'" font-size="11.5" fill="'+color(v)+'" text-anchor="middle" font-weight="700">'+v+'%</text>';
+    return '<rect x="'+x.toFixed(1)+'" y="'+y.toFixed(1)+'" width="'+barW.toFixed(1)+'" height="'+Math.max(bh,1).toFixed(1)+'" rx="2" fill="'+color(v)+'"><title>'+oc.labels[i]+': '+v+'% de ocupación</title></rect>'
+      + valorTxt
+      + (i % cadaN === 0 ? '<text x="'+cx+'" y="'+(h-10)+'" font-size="10.5" fill="#55636F" text-anchor="middle">'+oc.labels[i]+'</text>' : '');
   }).join('');
-  el.innerHTML = '<svg width="100%" viewBox="0 0 '+w+' '+h+'" style="max-width:600px;">'+grid+bars+'</svg>';
+  el.innerHTML = '<div style="overflow-x:auto;"><svg width="'+w+'" height="'+h+'" viewBox="0 0 '+w+' '+h+'" style="display:block;">'+grid+bars+'</svg></div>';
 }
 
 function renderReportes(){
