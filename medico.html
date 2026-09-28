@@ -2921,6 +2921,29 @@ function renderBarChart(containerId, entries, color){
   el.innerHTML = `<svg width="100%" viewBox="0 0 340 ${svgH}" style="max-width:400px; overflow:visible;">${bars}</svg>`;
 }
 
+// Barras horizontales tipo "progreso", con el % de pacientes (no la suma de menciones, ya que
+// "Forma clínica" es de selección múltiple y un mismo paciente puede tener varios sitios marcados).
+function renderSitioTBChart(containerId, entries, totalPacientes){
+  const el = document.getElementById(containerId);
+  if(!el) return;
+  if(!entries.length || !totalPacientes){ el.innerHTML = '<p style="color:var(--ink-soft); font-size:15.3px;">Sin datos en este período.</p>'; return; }
+  const rowH = 22, gap = 16;
+  const svgH = entries.length*(rowH+gap) - gap + 6;
+  const trackW = 250;
+  const bars = entries.map(([label,val],i)=>{
+    const pct = Math.round((val/totalPacientes)*1000)/10;
+    const y = i*(rowH+gap);
+    const w = Math.max((pct/100)*trackW, 3);
+    return `
+      <text x="0" y="${y+11}" font-size="13.6" font-weight="700" fill="#16212B">${label}</text>
+      <rect x="0" y="${y+15}" width="${trackW}" height="11" rx="5.5" fill="#EDF1F2"/>
+      <rect x="0" y="${y+15}" width="${w.toFixed(1)}" height="11" rx="5.5" fill="#0B5E59"/>
+      <text x="${trackW+10}" y="${y+24}" font-size="13.5" font-weight="800" fill="#0B5E59">${pct}%</text>
+      <text x="${trackW+52}" y="${y+24}" font-size="11.5" fill="#8A93A0">(${val} pac.)</text>
+    `;
+  }).join('');
+  el.innerHTML = `<svg width="100%" viewBox="0 0 380 ${svgH}" style="max-width:440px; overflow:visible;">${bars}</svg>`;
+}
 function renderColumnChart(containerId, entries, color){
   const el = document.getElementById(containerId);
   if(!entries.length){ el.innerHTML = '<p style="color:var(--ink-soft); font-size:15px;">Sin datos.</p>'; return; }
@@ -3496,7 +3519,7 @@ const REPORT_SECCIONES = [
   {key:'tendenciaOcupacion', label:'Tendencia de ocupación', grupo:'periodo'},
   {key:'ocupacionDiaria', label:'Ocupación de camas por día', grupo:'periodo'},
   {key:'tendenciaReciente', label:'Tendencia diagnóstico reciente', grupo:'periodo'},
-  {key:'indicadoresClave', label:'Indicadores clave (%)', grupo:'periodo'},
+  {key:'indicadoresClave', label:'Fugas y pases a UTI (%)', grupo:'periodo'},
   {key:'promedios', label:'Promedios (CD4, IOs)', grupo:'periodo'},
   {key:'frecuenciaIIH', label:'Frecuencia de IIH', grupo:'periodo'},
   {key:'prevalenciaGermenes', label:'Prevalencia de gérmenes', grupo:'periodo'},
@@ -4011,6 +4034,7 @@ function renderReportes(){
   // Detalle de tuberculosis: empírico vs dirigido, sitio de infección, y % diseminada (>2 sitios)
   const pacientesTBActual = activosClinico.filter(c=>c.tuvoTB==='Sí');
   const tbMicobacteriaAtipicaActual = pacientesTBActual.filter(c=>c.tipoMicobacteria==='No tuberculosis (atípica)').length;
+  const tbTuberculosisActual = pacientesTBActual.filter(c=>c.tipoMicobacteria!=='No tuberculosis (atípica)').length;
   const tbEmpiricoActual = pacientesTBActual.filter(c=>c.confirmacionTB==='Empírico' && c.tipoMicobacteria!=='No tuberculosis (atípica)').length;
   const tbReinicioActual = pacientesTBActual.filter(c=>c.tbTipoInicio==='Reinicio de tratamiento abandonado').length;
   const tbInicioActual = pacientesTBActual.filter(c=>c.tbTipoInicio==='Inicio de tratamiento').length;
@@ -4027,6 +4051,7 @@ function renderReportes(){
 
   const pacientesTBPeriodo = episodios.filter(h=>h.tuvoTB==='Sí');
   const tbMicobacteriaAtipicaPeriodo = pacientesTBPeriodo.filter(h=>h.tipoMicobacteria==='No tuberculosis (atípica)').length;
+  const tbTuberculosisPeriodo = pacientesTBPeriodo.filter(h=>h.tipoMicobacteria!=='No tuberculosis (atípica)').length;
   const tbEmpiricoPeriodo = pacientesTBPeriodo.filter(h=>h.confirmacionTB==='Empírico' && h.tipoMicobacteria!=='No tuberculosis (atípica)').length;
   const tbDirigidoPeriodo = pacientesTBPeriodo.filter(h=>h.confirmacionTB==='Confirmada' && h.tipoMicobacteria!=='No tuberculosis (atípica)').length;
   const tbReinicioPeriodo = pacientesTBPeriodo.filter(h=>h.tbTipoInicio==='Reinicio de tratamiento abandonado').length;
@@ -4171,11 +4196,14 @@ function renderReportes(){
       <div id="chartOportunistasActual" style="margin-bottom:6px;"></div>` : ''}
 
       ${incluye('salaActualTB') ? `
-      <h4 style="font-size:14.5px; color:var(--teal-dark); margin:14px 0 8px;">MICOBACTERIOSIS: TIPO Y ABORDAJE DIAGNÓSTICO</h4>
+      <h4 style="font-size:14.5px; color:var(--teal-dark); margin:14px 0 8px;">TUBERCULOSIS VS. NO TUBERCULOSIS (ATÍPICA)</h4>
+      <div id="chartTBTipoActual" style="margin-bottom:12px;"></div>
+      <h4 style="font-size:14.5px; color:var(--teal-dark); margin:14px 0 8px;">TUBERCULOSIS: EMPÍRICO VS. DIRIGIDO</h4>
       <div id="chartTBEmpiricoActual" style="margin-bottom:12px;"></div>
       <h4 style="font-size:14.5px; color:var(--teal-dark); margin:14px 0 8px;">TUBERCULOSIS: INICIO, REINICIO O CONTINUIDAD DEL TRATAMIENTO</h4>
       <div id="chartTBInicioActual" style="margin-bottom:12px;"></div>
       <h4 style="font-size:14.5px; color:var(--teal-dark); margin:14px 0 8px;">TUBERCULOSIS: SITIO DE INFECCIÓN</h4>
+      <p class="sub-h" style="margin-bottom:6px;">% de pacientes con ese sitio afectado (puede sumar más de 100%, un paciente puede tener varios).</p>
       <div id="chartTBSitioActual" style="margin-bottom:12px;"></div>
       <h4 style="font-size:14.5px; color:var(--teal-dark); margin:14px 0 8px;">TUBERCULOSIS DISEMINADA (MÁS DE 2 SITIOS)</h4>
       <div id="chartTBDiseminadaActual" style="margin-bottom:6px;"></div>` : ''}
@@ -4193,7 +4221,7 @@ function renderReportes(){
     ${internadosPeriodo.length>0 ? `<div class="alert-box" style="margin-bottom:22px; background:#E3F2FD; border-color:#42A5F5; color:#1565C0;">ℹ️ Los reportes de caracterización clínica (edad, diagnósticos, TBC, IIH, alergias, etc.) incluyen a <strong>${internadosPeriodo.length}</strong> paciente(s) aún internado(s) con datos clínicos cargados. Sus datos son parciales y pueden cambiar mientras sigan internados. Egresos, estadía, giro-cama, mortalidad y motivos de egreso cuentan solo egresados.</div>` : ''}
 
     ${incluye('indicadoresClave') ? `
-    <h3 style="font-size:16.5px; color:var(--teal-dark); margin-bottom:10px;">INDICADORES CLAVE DEL PERÍODO</h3>
+    <h3 style="font-size:16.5px; color:var(--teal-dark); margin-bottom:10px;">FUGAS Y PASES A UTI (% DEL PERÍODO)</h3>
     <div id="chartIndicadores" style="margin-bottom:22px;"></div>` : ''}
 
     ${incluye('promedios') ? `
@@ -4219,6 +4247,9 @@ function renderReportes(){
     ${incluye('tbPeriodo') ? `
     <h3 style="font-size:16.5px; color:var(--teal-dark); margin-bottom:10px;">DETALLE DE MICOBACTERIOSIS (EGRESOS + INTERNADOS)</h3>
     <h4 style="font-size:14.5px; color:var(--teal-dark); margin-bottom:8px;">Empírico vs. dirigido</h4>
+    <h4 style="font-size:14.5px; color:var(--teal-dark); margin-bottom:8px;">TUBERCULOSIS VS. NO TUBERCULOSIS (ATÍPICA)</h4>
+    <div id="chartTBTipoPeriodo" style="margin-bottom:16px;"></div>
+    <h4 style="font-size:14.5px; color:var(--teal-dark); margin-bottom:8px;">TUBERCULOSIS: EMPÍRICO VS. DIRIGIDO</h4>
     <div id="chartTBEmpiricoPeriodo" style="margin-bottom:16px;"></div>
     <h4 style="font-size:14.5px; color:var(--teal-dark); margin-bottom:8px;">TUBERCULOSIS: INICIO, REINICIO O CONTINUIDAD DEL TRATAMIENTO</h4>
     <div id="chartTBInicioPeriodo" style="margin-bottom:16px;"></div>
@@ -4321,9 +4352,10 @@ function renderReportes(){
     if(incluye('salaActualTransmision')) renderDonutChart('chartTransmisionActual', transmisionActual, null, false, true);
     if(incluye('salaActualOportunistas')) renderStackedBar('chartOportunistasActual', [{label:'Oportunistas', count:opActualSi, color:'#0B5E59'},{label:'No oportunistas', count:opActualNo, color:'#9AA5AD'}]);
     if(incluye('salaActualTB')){
-      renderStackedBar('chartTBEmpiricoActual', [{label:'Empírico', count:tbEmpiricoActual, color:'#B9821D'},{label:'Dirigido (confirmado)', count:tbDirigidoActual, color:'#0B5E59'},{label:'Micobacteria atípica (no TBC)', count:tbMicobacteriaAtipicaActual, color:'#6E4FA0'}]);
+      renderStackedBar('chartTBTipoActual', [{label:'Tuberculosis', count:tbTuberculosisActual, color:'#0B5E59'},{label:'No tuberculosis (atípica)', count:tbMicobacteriaAtipicaActual, color:'#6E4FA0'}]);
+      renderStackedBar('chartTBEmpiricoActual', [{label:'Empírico', count:tbEmpiricoActual, color:'#B9821D'},{label:'Dirigido (confirmado)', count:tbDirigidoActual, color:'#0B5E59'}]);
       renderStackedBar('chartTBInicioActual', [{label:'Inicio de tratamiento', count:tbInicioActual, color:'#0B5E59'},{label:'Reinicio de tratamiento abandonado', count:tbReinicioActual, color:'#C0392B'},{label:'Continúa tratamiento', count:tbContinuaActual, color:'#2563AF'},{label:'Sin especificar', count:tbTipoInicioSinEspecActual, color:'#9AA5AD'}]);
-      renderBarChart('chartTBSitioActual', topTBSitioActual, '#0B5E59');
+      renderSitioTBChart('chartTBSitioActual', topTBSitioActual, pacientesTBActual.length);
       renderPercentBars('chartTBDiseminadaActual', [{label:'TB diseminada (>2 sitios)', pct:pctTBDiseminadaActual, color:'#C0392B'}]);
     }
   }
@@ -4332,9 +4364,10 @@ function renderReportes(){
     if(incluye('oportunistasPeriodo')) renderStackedBar('chartOportunistasPeriodo', [{label:'Oportunistas', count:opPeriodoSi, color:'#0B5E59'},{label:'No oportunistas', count:opPeriodoNo, color:'#9AA5AD'}]);
     if(incluye('sifilisPeriodo')) renderPercentBars('chartSifilisPeriodo', [{label:'Sífilis diagnosticada en la internación', pct:pctSifilisPeriodo, color:'#C0392B'}]);
     if(incluye('tbPeriodo')){
-      renderStackedBar('chartTBEmpiricoPeriodo', [{label:'Empírico', count:tbEmpiricoPeriodo, color:'#B9821D'},{label:'Dirigido (confirmado)', count:tbDirigidoPeriodo, color:'#0B5E59'},{label:'Micobacteria atípica (no TBC)', count:tbMicobacteriaAtipicaPeriodo, color:'#6E4FA0'}]);
+      renderStackedBar('chartTBTipoPeriodo', [{label:'Tuberculosis', count:tbTuberculosisPeriodo, color:'#0B5E59'},{label:'No tuberculosis (atípica)', count:tbMicobacteriaAtipicaPeriodo, color:'#6E4FA0'}]);
+      renderStackedBar('chartTBEmpiricoPeriodo', [{label:'Empírico', count:tbEmpiricoPeriodo, color:'#B9821D'},{label:'Dirigido (confirmado)', count:tbDirigidoPeriodo, color:'#0B5E59'}]);
       renderStackedBar('chartTBInicioPeriodo', [{label:'Inicio de tratamiento', count:tbInicioPeriodo, color:'#0B5E59'},{label:'Reinicio de tratamiento abandonado', count:tbReinicioPeriodo, color:'#C0392B'},{label:'Continúa tratamiento', count:tbContinuaPeriodo, color:'#2563AF'},{label:'Sin especificar', count:tbTipoInicioSinEspecPeriodo, color:'#9AA5AD'}]);
-      renderBarChart('chartTBSitioPeriodo', topTBSitioPeriodo, '#0B5E59');
+      renderSitioTBChart('chartTBSitioPeriodo', topTBSitioPeriodo, pacientesTBPeriodo.length);
       renderPercentBars('chartTBDiseminadaPeriodo', [{label:'TB diseminada (>2 sitios)', pct:pctTBDiseminadaPeriodo, color:'#C0392B'}]);
     }
     if(incluye('indicadoresClave')) renderPercentBars('chartIndicadores', [
