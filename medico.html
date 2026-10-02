@@ -836,7 +836,17 @@ function renderFields(){
   if(pendingStatus==='ocupada'){
     const p = b.patient || {nombre:'', dni:'', aislamiento:'ninguno', procedencia:'Guardia'};
     const isIso = isolationBeds.some(x=>x.id===currentBed);
+    // Si ya están los datos básicos cargados, arranca colapsado para dejar más lugar a los botones
+    // de abajo (Datos clínicos, Indicaciones, etc.) sin tener que scrollear. Se puede abrir igual
+    // tocando el renglón — no es que se bloquea la edición, solo arranca cerrado.
+    const datosIngresoCompletos = !!(p.nombre && p.nombre.trim() && p.dni && p.dni.trim() && p.medico);
+    const resumenIngreso = datosIngresoCompletos
+      ? `👤 ${escInd(p.nombre)} · ${escInd(p.tipoDocumento||'DNI')} ${escInd(p.dni)} · ${escInd(p.medico||'Sin médico asignado')}`
+      : '📝 Datos del paciente';
     f.innerHTML = `
+    <details class="ind-details" ${datosIngresoCompletos?'':'open'} style="margin-bottom:10px;">
+      <summary>${resumenIngreso}</summary>
+      <div class="ind-details-body">
       <div class="field"><label>Nombre y apellido</label><input id="fNombre" value="${p.nombre||''}" oninput="this.value=this.value.toUpperCase()" style="text-transform:uppercase;"></div>
       <div class="field"><label>Tipo de documento</label>
         <select id="fTipoDocumento">
@@ -876,6 +886,8 @@ function renderFields(){
           <option value="Neutropénico" ${p.aislamiento==='Neutropénico'?'selected':''}>Neutropénico</option>
         </select>
       </div>` : ''}
+      </div>
+    </details>
     `;
     if(b.status==='ocupada'){
       f.innerHTML += `<button type="button" class="btn" style="width:100%; margin-top:10px; background:var(--teal); border-color:var(--teal);" onclick="openResumenHC()">📄 Resumen de HC</button>`;
