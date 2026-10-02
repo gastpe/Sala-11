@@ -1576,7 +1576,7 @@ function renderIIHEntryBlock(entry, idx){
             ${GERMEN_OPCIONES.map(op=>`<label style="display:flex; align-items:center; gap:4px; font-size:14.2px; font-weight:600; color:var(--ink); border:1px solid var(--line); border-radius:6px; padding:5px 8px;"><input type="checkbox" class="iihGermenCheck_${idx}" value="${op}" ${(entry.germenes||(entry.germen?[entry.germen]:[])).includes(op)?'checked':''} ${op==='Otro'?`onchange="toggleGermenOtro(${idx})"`:''} style="width:auto;">${op}</label>`).join('')}
           </div>
           <div id="iihGermenOtroWrap_${idx}" style="${(entry.germenes||[]).includes('Otro')?'':'display:none;'} margin-top:6px;">
-            <input id="iihGermenOtroTexto_${idx}" class="uppercase-input" placeholder="Especificar germen" value="${entry.germenOtroTexto||''}">
+            <input id="iihGermenOtroTexto_${idx}" placeholder="Especificar germen" value="${entry.germenOtroTexto||''}">
           </div>
         </div>
         <div class="field">
