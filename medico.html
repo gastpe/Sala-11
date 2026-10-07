@@ -422,6 +422,11 @@
         </div>
       </div>
 
+      <div class="legend-vertical" id="fichasPanel" style="margin-bottom:14px;">
+        <div class="legend-title">📋 Fichas incompletas</div>
+        <div id="fichasLista"></div>
+      </div>
+
       <div class="legend-vertical" id="eventosPanel" style="margin-bottom:14px;">
         <div class="legend-title">📅 Eventos y recordatorios</div>
         <div id="eventosLista"></div>
@@ -683,6 +688,7 @@ function renderBed(id){
     if(b.patient.aislamiento && b.patient.aislamiento!=='ninguno'){
       extra += `<div class="sub">${b.patient.aislamiento}</div>`;
     }
+    extra += barraFichaHTML(b.patient);
   } else if(b.status==='bloqueada'){
     const label = b.block.motivo==='aislamiento' ? (b.block.aislamientoTipo||'aislamiento') : (b.block.motivo==='rotura'?'rotura':'arreglo');
     extra = `<div class="sub">${label}</div>`;
@@ -713,6 +719,7 @@ function renderAll(){
   updateOcupacionStats();
   renderNotas();
   renderEventos();
+  renderFichasIncompletas();
 }
 function updateOcupacionStats(){
   let ocup = 0;
@@ -1089,11 +1096,11 @@ function confirmEgreso(){
   const patient = beds[id].patient;
   const c = patient.clinico || {};
 
-  const prog = calcularProgresoDatosClinicos(c);
-  if(prog.faltantes.length){
-    const seguir = confirm('⚠️ Faltan secciones de "Datos clínicos" de ' + patient.nombre + ':\n\n' + prog.faltantes.map(f=>'• '+f).join('\n') + '\n\n¿Confirmás el egreso igual? (después vas a poder completarlo desde "Buscar paciente")');
-    if(!seguir) return;
+  if(!egresoDiagConfirmado){
+    mostrarRecordatorioEgreso(patient);
+    return;
   }
+  egresoDiagConfirmado = false;
 
   const historialEntry = armarEntradaHistorial(patient, id, fecha, motivo);
   historial.push(historialEntry);
@@ -1505,7 +1512,7 @@ function renderClinicoFormHTML(c){
 
       </div>
     </details>
-    <details class="ind-details">
+    <details class="ind-details" id="secDiagnosticosInternacion">
       <summary>8. Diagnósticos de esta internación</summary>
       <div class="ind-details-body">
     <div id="recordatorioTBEnDiagnosticos" style="${c.tuvoTB==='Sí'?'':'display:none;'} background:#FDF3DC; border:1px solid #B9821D; color:#8A611A; border-radius:8px; padding:8px 12px; margin-bottom:10px; font-size:13px; font-weight:600;">
@@ -2459,6 +2466,90 @@ function calcularProgresoDatosClinicos(clinico){
   const c = clinico || {};
   const faltantes = SECCIONES_CLINICO.filter(s=>!s.check(c)).map(s=>s.nombre);
   return { completadas: SECCIONES_CLINICO.length - faltantes.length, total: SECCIONES_CLINICO.length, faltantes };
+}
+
+
+/* ---------- Progreso de fichas clínicas en la pantalla principal ---------- */
+function colorProgresoFicha(pct){
+  return pct===100 ? 'var(--libre-bd)' : (pct>=50 ? 'var(--aisl-bd)' : 'var(--rot-bd)');
+}
+function barraFichaHTML(patient){
+  const prog = calcularProgresoDatosClinicos(patient.clinico);
+  const pct = Math.round(prog.completadas/prog.total*100);
+  return `<div class="ficha-bar" title="Ficha clínica: ${prog.completadas}/${prog.total} secciones" style="margin-top:5px; width:80%; display:flex; align-items:center; gap:4px;">
+    <div style="flex:1; background:#DCE0E2; border-radius:4px; height:5px; overflow:hidden;"><div style="background:${colorProgresoFicha(pct)}; width:${pct}%; height:100%;"></div></div>
+    <span style="font-size:10px; font-weight:700; color:var(--ink-soft);">${prog.completadas}/${prog.total}</span>
+  </div>`;
+}
+function renderFichasIncompletas(){
+  const el = document.getElementById('fichasLista');
+  if(!el) return;
+  const items = [];
+  Object.keys(beds).forEach(id=>{
+    const b = beds[id];
+    if(b.status!=='ocupada' || !b.patient) return;
+    const prog = calcularProgresoDatosClinicos(b.patient.clinico);
+    if(prog.faltantes.length) items.push({id, nombre:b.patient.nombre||'(sin nombre)', prog});
+  });
+  if(!items.length){
+    el.innerHTML = '<div style="font-size:13.5px; font-weight:700; color:var(--libre-tx);">✓ Todas las fichas al día</div>';
+    return;
+  }
+  items.sort((a,b)=>a.prog.completadas-b.prog.completadas);
+  el.innerHTML = items.map(it=>{
+    const pct = Math.round(it.prog.completadas/it.prog.total*100);
+    return `<div onclick="abrirFichaDesde('${it.id}')" style="cursor:pointer; padding:6px 0; border-bottom:1px dashed var(--line);" title="Faltan: ${it.prog.faltantes.join(', ')}">
+      <div style="display:flex; justify-content:space-between; font-size:13px; font-weight:700;"><span>Cama ${it.id} · ${escInd(it.nombre)}</span><span style="color:var(--ink-soft);">${it.prog.completadas}/${it.prog.total}</span></div>
+      <div style="background:#DCE0E2; border-radius:4px; height:6px; overflow:hidden; margin-top:3px;"><div style="background:${colorProgresoFicha(pct)}; width:${pct}%; height:100%;"></div></div>
+    </div>`;
+  }).join('');
+}
+function abrirFichaDesde(id){
+  openBed(id);
+  startClinico();
+}
+
+/* ---------- Recordatorio de diagnósticos antes de cualquier egreso ---------- */
+let egresoDiagConfirmado = false;
+function mostrarRecordatorioEgreso(patient){
+  const c = patient.clinico || {};
+  const diags = obtenerDiagnosticosParaResumen(c);
+  const prog = calcularProgresoDatosClinicos(c);
+  let ov = document.getElementById('egresoRecordOverlay');
+  if(!ov){
+    ov = document.createElement('div');
+    ov.id = 'egresoRecordOverlay';
+    ov.className = 'overlay';
+    ov.style.zIndex = 60;
+    document.body.appendChild(ov);
+  }
+  ov.innerHTML = `<div class="modal" style="max-width:460px;">
+    <h2 style="margin:0 0 6px; font-size:18px;">🩺 Antes de egresar</h2>
+    <p style="margin:0 0 10px; font-size:14px;">¿Revisaste y actualizaste los <strong>diagnósticos de internación</strong> de ${escInd(patient.nombre||'')}?</p>
+    <div style="background:#F4F6F7; border-radius:8px; padding:8px 12px; margin-bottom:10px; font-size:13.5px;">
+      ${diags.length ? diags.map(d=>`<div>• <strong>${escInd(d.categoria)}</strong>${d.estado?' — '+escInd(d.estado):''}</div>`).join('') : '<div style="color:var(--rot-bd); font-weight:700;">Sin diagnósticos cargados</div>'}
+    </div>
+    ${prog.faltantes.length ? `<div style="font-size:12.5px; color:var(--ink-soft); margin-bottom:10px;">Secciones sin completar: ${prog.faltantes.join(', ')}</div>` : ''}
+    <button type="button" class="btn" style="width:100%;" onclick="recordatorioRevisarDiagnosticos()">Revisar diagnósticos</button>
+    <button type="button" class="btn ghost" style="width:100%; margin-top:8px;" onclick="recordatorioEgresarIgual()">Egresar igual</button>
+  </div>`;
+  ov.classList.add('show');
+}
+function cerrarRecordatorioEgreso(){
+  const ov = document.getElementById('egresoRecordOverlay');
+  if(ov) ov.classList.remove('show');
+}
+function recordatorioEgresarIgual(){
+  cerrarRecordatorioEgreso();
+  egresoDiagConfirmado = true;
+  confirmEgreso();
+}
+function recordatorioRevisarDiagnosticos(){
+  cerrarRecordatorioEgreso();
+  document.getElementById('modalActionsBtns').style.display = 'none';
+  startClinico();
+  const d = document.getElementById('secDiagnosticosInternacion');
+  if(d){ d.open = true; setTimeout(()=>d.scrollIntoView({behavior:'smooth', block:'start'}), 50); }
 }
 
 function startPendientes(){
