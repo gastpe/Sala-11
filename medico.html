@@ -2708,7 +2708,7 @@ function buildIndicacionesPrintHTML(patient, ind, camaId){
       <div style="font-size:14px; font-weight:800; letter-spacing:1px; color:var(--teal); text-transform:uppercase; min-width:65px;">Sala 11</div>
       <div style="text-align:center; flex:1;">
         <div style="font-size:20px; font-weight:800; text-transform:uppercase; letter-spacing:.3px;">${escInd(patient.nombre||'(sin nombre)')}</div>
-        <div style="font-size:12px; color:#333; margin-top:2px;">DNI ${escInd(patient.dni||'-')} &nbsp;·&nbsp; ${patient.obraSocial?'Con obra social':'Sin obra social'} &nbsp;·&nbsp; ${fecha}</div>
+        <div style="font-size:12px; color:#333; margin-top:2px;">DNI ${escInd(patient.dni||'-')} &nbsp;·&nbsp; ${patient.obraSocial?'<span style="background:#FFD400; color:#000; border:1.5px solid #000; border-radius:4px; padding:1px 7px; font-weight:800; font-size:12.5px; letter-spacing:.3px;">💲 CON OBRA SOCIAL</span>':'Sin obra social'} &nbsp;·&nbsp; ${fecha}</div>
       </div>
       <div style="background:var(--teal); color:#fff; font-size:22px; font-weight:800; border-radius:6px; padding:3px 12px; min-width:50px; text-align:center;">${escInd(camaId)}</div>
     </div>
