@@ -183,9 +183,9 @@
   .nurse{ font-size:14.2px; font-weight:700; color:var(--teal-dark); text-align:center; padding:10px; border:1px dashed var(--line); border-radius:10px; }
 
   .bed{
-    border-radius:12px; border:1.5px solid var(--line); padding:10px 8px; text-align:center;
+    border-radius:12px; border:1.5px solid var(--line); padding:10px 8px 22px; text-align:center;
     cursor:pointer; transition:transform .1s ease, box-shadow .1s ease; user-select:none; position:relative;
-    display:flex; flex-direction:column; align-items:center; gap:4px; height:172px; justify-content:center;
+    display:flex; flex-direction:column; align-items:center; gap:4px; min-height:172px; justify-content:center;
   }
   .bed:hover{ transform:translateY(-2px); box-shadow:0 4px 10px rgba(0,0,0,.08); }
   .bed .icon{ font-size:21.2px; line-height:1; }
@@ -420,11 +420,6 @@
           <button class="btn ghost" onclick="openReportes()">📊 Reportes</button>
           <button class="btn" onclick="openParte()">PARTE DE CAMAS</button>
         </div>
-      </div>
-
-      <div class="legend-vertical" id="fichasPanel" style="margin-bottom:14px;">
-        <div class="legend-title">📋 Fichas incompletas</div>
-        <div id="fichasLista"></div>
       </div>
 
       <div class="legend-vertical" id="eventosPanel" style="margin-bottom:14px;">
@@ -719,7 +714,6 @@ function renderAll(){
   updateOcupacionStats();
   renderNotas();
   renderEventos();
-  renderFichasIncompletas();
 }
 function updateOcupacionStats(){
   let ocup = 0;
@@ -2471,42 +2465,15 @@ function calcularProgresoDatosClinicos(clinico){
 
 /* ---------- Progreso de fichas clínicas en la pantalla principal ---------- */
 function colorProgresoFicha(pct){
-  return pct===100 ? 'var(--libre-bd)' : (pct>=50 ? 'var(--aisl-bd)' : 'var(--rot-bd)');
+  return pct===100 ? '#16C45A' : (pct>=50 ? '#FFC400' : '#FF3B30');
 }
 function barraFichaHTML(patient){
   const prog = calcularProgresoDatosClinicos(patient.clinico);
   const pct = Math.round(prog.completadas/prog.total*100);
-  return `<div class="ficha-bar" title="Ficha clínica: ${prog.completadas}/${prog.total} secciones" style="margin-top:5px; width:80%; display:flex; align-items:center; gap:4px;">
-    <div style="flex:1; background:#DCE0E2; border-radius:4px; height:5px; overflow:hidden;"><div style="background:${colorProgresoFicha(pct)}; width:${pct}%; height:100%;"></div></div>
-    <span style="font-size:10px; font-weight:700; color:var(--ink-soft);">${prog.completadas}/${prog.total}</span>
+  return `<div class="ficha-bar" title="Ficha clínica: ${prog.completadas}/${prog.total} secciones" style="position:absolute; left:10px; right:10px; bottom:7px; display:flex; align-items:center; gap:5px;">
+    <div style="flex:1; background:#DCE0E2; border-radius:4px; height:7px; overflow:hidden;"><div style="background:${colorProgresoFicha(pct)}; width:${pct}%; height:100%;"></div></div>
+    <span style="font-size:10.5px; font-weight:800; color:var(--ink-soft); line-height:1;">${prog.completadas}/${prog.total}</span>
   </div>`;
-}
-function renderFichasIncompletas(){
-  const el = document.getElementById('fichasLista');
-  if(!el) return;
-  const items = [];
-  Object.keys(beds).forEach(id=>{
-    const b = beds[id];
-    if(b.status!=='ocupada' || !b.patient) return;
-    const prog = calcularProgresoDatosClinicos(b.patient.clinico);
-    if(prog.faltantes.length) items.push({id, nombre:b.patient.nombre||'(sin nombre)', prog});
-  });
-  if(!items.length){
-    el.innerHTML = '<div style="font-size:13.5px; font-weight:700; color:var(--libre-tx);">✓ Todas las fichas al día</div>';
-    return;
-  }
-  items.sort((a,b)=>a.prog.completadas-b.prog.completadas);
-  el.innerHTML = items.map(it=>{
-    const pct = Math.round(it.prog.completadas/it.prog.total*100);
-    return `<div onclick="abrirFichaDesde('${it.id}')" style="cursor:pointer; padding:6px 0; border-bottom:1px dashed var(--line);" title="Faltan: ${it.prog.faltantes.join(', ')}">
-      <div style="display:flex; justify-content:space-between; font-size:13px; font-weight:700;"><span>Cama ${it.id} · ${escInd(it.nombre)}</span><span style="color:var(--ink-soft);">${it.prog.completadas}/${it.prog.total}</span></div>
-      <div style="background:#DCE0E2; border-radius:4px; height:6px; overflow:hidden; margin-top:3px;"><div style="background:${colorProgresoFicha(pct)}; width:${pct}%; height:100%;"></div></div>
-    </div>`;
-  }).join('');
-}
-function abrirFichaDesde(id){
-  openBed(id);
-  startClinico();
 }
 
 /* ---------- Recordatorio de diagnósticos antes de cualquier egreso ---------- */
