@@ -307,6 +307,10 @@
   @page{ size: landscape; margin: 10mm; }
     @page{ size:A4; margin:8mm; }
   }
+  /* Vista previa de indicaciones: tamaño real de la hoja A4 (210mm - 2x8mm de margen) */
+  #indicacionesOverlay{ align-items:flex-start; overflow:auto; }
+  .modal.modal-hoja{ width:194mm; max-width:none; max-height:none; overflow:visible; flex:none; margin:0 auto; box-sizing:content-box; padding:8mm; box-shadow:0 4px 24px rgba(0,0,0,.25); }
+  body.print-mode .modal.modal-hoja{ zoom:1 !important; box-sizing:border-box; }
   body.print-mode > *:not(.overlay){ display:none !important; }
   body.print-mode .overlay:not(.show){ display:none !important; }
   body.print-mode .overlay.show{
@@ -512,7 +516,7 @@
 
 <!-- Modal impresión de indicaciones médicas -->
 <div class="overlay" id="indicacionesOverlay">
-  <div class="modal">
+  <div class="modal modal-hoja" id="indicacionesModal">
     <div class="print-area" id="indicacionesPrintSheet"></div>
     <div class="modal-actions" style="margin-top:18px;">
       <button class="btn ghost" onclick="closeIndicacionesPrint()">Volver</button>
@@ -2768,6 +2772,7 @@ function openIndicacionesPrint(){
   document.getElementById('indicacionesPrintSheet').innerHTML = buildIndicacionesPrintHTML(patient, ind, currentBed);
   document.getElementById('bedOverlay').classList.remove('show');
   document.getElementById('indicacionesOverlay').classList.add('show');
+  ajustarHojaIndicaciones();
 }
 let indicacionesModoLote = false;
 function imprimirIndicacionesDeMisPacientes(){
@@ -2788,7 +2793,17 @@ function imprimirIndicacionesDeMisPacientes(){
   }).join('');
   document.getElementById('indicacionesPrintSheet').innerHTML = hojas;
   document.getElementById('indicacionesOverlay').classList.add('show');
+  ajustarHojaIndicaciones();
 }
+function ajustarHojaIndicaciones(){
+  const m = document.getElementById('indicacionesModal');
+  if(!m) return;
+  m.style.zoom = 1;
+  const ancho = m.getBoundingClientRect().width;
+  const disp = window.innerWidth - 24;
+  m.style.zoom = ancho > disp ? (disp/ancho) : 1;
+}
+window.addEventListener('resize', ()=>{ if(document.getElementById('indicacionesOverlay').classList.contains('show')) ajustarHojaIndicaciones(); });
 function closeIndicacionesPrint(){
   document.getElementById('indicacionesOverlay').classList.remove('show');
   if(indicacionesModoLote){
