@@ -3433,7 +3433,7 @@ function renderEventos(){
     return fin >= hoy;
   });
   if(eventos.length !== antes) cambio = true;
-  if(cambio) saveState();
+  if(cambio && lastKnownServerBeds) saveState(); // no guardar nada hasta haber leído la planilla real
 
   const ordenados = [...eventos].sort((a,b)=> new Date(a.fechaInicio||a.fecha) - new Date(b.fechaInicio||b.fecha));
   const lista = document.getElementById('eventosLista');
@@ -3550,9 +3550,12 @@ function completeNota(id){
 }
 const PENDIENTES_DIA_MEDICO = { 1:'Lau', 2:'Nati', 4:'Gas', 5:'Grace' }; // getDay(): 0=domingo,1=lunes,2=martes,3=miércoles,4=jueves,5=viernes,6=sábado
 function limpiarRecordatoriosPendientesVencidos(){
-  if(new Date().getHours() < 13) return false;
+  const ahora = new Date();
+  const fechaHoy = ahora.toLocaleDateString('es-AR');
+  const pasaron13 = ahora.getHours() >= 13;
   const antes = notas.length;
-  notas = notas.filter(n => n.tipo !== 'pendientesRecordatorio');
+  // Se borran: los de días anteriores (siempre) y los de hoy una vez pasadas las 13 hs
+  notas = notas.filter(n => n.tipo !== 'pendientesRecordatorio' || (n.creada === fechaHoy && !pasaron13));
   if(notas.length !== antes){
     renderNotas();
     saveState();
@@ -4602,6 +4605,7 @@ function setOfflineBanner(active, since, pendingWrite){
 }
 function manualSync(){ saveState(); }
 
+let baseCamasDeCopiaLocal = null; // camas tal como estaban en la copia local al abrir (puede ser vieja)
 let lastKnownServerBeds = null; // foto de camas tal como estaban en el servidor la última vez que se leyó con éxito
 let pendingMergeUTI = null; // {dni, cama, egreso} de un "Pase a UTI" a fusionar en el próximo guardado
 let lastKnownServerNotas = null; // ídem para notas
@@ -4624,6 +4628,7 @@ async function loadState(){
     pendingHistorialAppends = cache.data.pendingHistorialAppends || [];
     pendingDiagnosticosAppends = cache.data.pendingDiagnosticosAppends || [];
     pendingIntercurrenciasAppends = cache.data.pendingIntercurrenciasAppends || [];
+    baseCamasDeCopiaLocal = JSON.parse(JSON.stringify(beds)); // para saber qué camas tocó el usuario respecto de la copia vieja
     renderAll();
   }
 
@@ -4709,7 +4714,10 @@ async function saveStateInterno(undoEgreso, completarClinico, mergeUTI){
       const res0 = await fetch(APPS_SCRIPT_URL + '?_=' + Date.now() + '&token=' + encodeURIComponent(googleIdToken||'') + '&liviano=1', {cache:'no-store'});
       const data0 = await res0.json();
       const data0_confiable = data0.beds && Object.keys(data0.beds).length >= allIds.length / 2;
-      if(data0_confiable) lastKnownServerBeds = data0.beds;
+      // Ojo: si en pantalla hay una copia local vieja (todavía no se leyó la planilla), la base de
+      // comparación es ESA copia, no lo que hay hoy en la planilla — así las camas que el usuario
+      // no tocó se refrescan con la planilla en vez de pisarla con datos viejos.
+      if(data0_confiable) lastKnownServerBeds = baseCamasDeCopiaLocal || data0.beds;
     }catch(e){
       console.error('No se pudo confirmar el estado del servidor antes de guardar', e);
     }
@@ -4891,6 +4899,7 @@ async function iniciarApp(){
   renderAll();
   checkNuevosIngresos();
   checkRecordatorioPendientes();
+  setInterval(checkRecordatorioPendientes, 15*60*1000); // con la pestaña abierta, limpia solo a las 13 hs
 }
 </script>
 </body>
