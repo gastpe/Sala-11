@@ -1002,15 +1002,25 @@ function saveBed(){
     const fechaIngresoHospital = entradaUTI ? entradaUTI.ingresoHospital : (fIH ? isoToEsAr(fIH) : (existing ? existing.fechaIngresoHospital : new Date().toLocaleDateString('es-AR')));
     const fechaIngresoSala = entradaUTI ? entradaUTI.ingresoSala : (fIS ? isoToEsAr(fIS) : (existing ? existing.fechaIngresoSala : new Date().toLocaleDateString('es-AR')));
     const aislamiento = (!isIso || BATH_PAIRS[id]) ? document.getElementById('fAislamiento').value : 'ninguno';
+    // Al volver de UTI se recupera la ficha que tenía antes del pase (copia completa si existe;
+    // si no, se reconstruye con lo que quedó en Historial/Diagnosticos/Intercurrencias).
+    let fichaRecuperada = null;
+    if(entradaUTI){
+      try{
+        fichaRecuperada = entradaUTI.fichaCompletaJSON ? JSON.parse(entradaUTI.fichaCompletaJSON) : null;
+      }catch(e){ fichaRecuperada = null; }
+      if(!fichaRecuperada || !fichaRecuperada.clinico) fichaRecuperada = reconstruirFichaDesdeHistorial(entradaUTI);
+    }
+    const notaUTI = entradaUTI ? '📌 Pasó por UTI desde el ' + entradaUTI.egreso + ' hasta el ' + new Date().toLocaleDateString('es-AR') + ' (regresó a sala).' : '';
     const clinicoInicial = entradaUTI
-      ? { evolucion: '📌 Pasó por UTI desde el ' + entradaUTI.egreso + ' hasta el ' + new Date().toLocaleDateString('es-AR') + ' (regresó a sala).' }
+      ? { ...fichaRecuperada.clinico, pasoPorUTI: 'Sí', evolucion: [ (fichaRecuperada.clinico.evolucion||'').trim(), notaUTI ].filter(Boolean).join('\n') }
       : (existing && existing.clinico);
     // Los días que pasó en UTI no cuentan como ocupación real de una cama de Sala 11 (se usan en el
     // reporte de ocupación diaria para no representarlos como si el paciente hubiera estado en la sala).
     const pasesUTI = entradaUTI
       ? [...(entradaUTI.pasesUTI || []), { desde: entradaUTI.egreso, hasta: new Date().toLocaleDateString('es-AR') }]
       : ((existing && existing.pasesUTI) || []);
-    beds[id] = { status:'ocupada', patient:{ nombre, dni, tipoDocumento, medico, obraSocial, aislamiento, procedencia, fechaIngresoHospital, fechaIngresoSala, pasesUTI, clinico: clinicoInicial, indicaciones: existing && existing.indicaciones, pendientes: existing && existing.pendientes } };
+    beds[id] = { status:'ocupada', patient:{ nombre, dni, tipoDocumento, medico, obraSocial, aislamiento, procedencia, fechaIngresoHospital, fechaIngresoSala, pasesUTI, clinico: clinicoInicial, indicaciones: entradaUTI ? ((fichaRecuperada && fichaRecuperada.indicaciones) || undefined) : (existing && existing.indicaciones), pendientes: entradaUTI ? ((fichaRecuperada && fichaRecuperada.pendientes) || undefined) : (existing && existing.pendientes) } };
 
     if(entradaUTI){
       // Fusionar: sacar la fila de "Pase a UTI" del historial (local y en la planilla) y cerrar la notita de seguimiento.
@@ -1023,7 +1033,11 @@ function saveBed(){
       pendingHistorialAppends = pendingHistorialAppends.filter(h => !esLaMismaEntradaUTI(h));
       notas = notas.filter(n => !(n.tipo==='uti' && n.dni===entradaUTI.dni && n.cama===entradaUTI.cama && n.egreso===entradaUTI.egreso));
       renderNotas();
-      pendingMergeUTI = { dni: entradaUTI.dni, cama: entradaUTI.cama, egreso: entradaUTI.egreso };
+      // Los diagnósticos e intercurrencias de esa etapa ya viajan dentro de la ficha recuperada y se
+      // registran de nuevo en el egreso final: se sacan del registro para no duplicarlos.
+      diagnosticosLog = diagnosticosLog.filter(d => !(d.dni===entradaUTI.dni && String(d.cama)===String(entradaUTI.cama) && d.egreso===entradaUTI.egreso));
+      intercurrenciasLog = intercurrenciasLog.filter(d => !(d.dni===entradaUTI.dni && String(d.cama)===String(entradaUTI.cama) && d.egreso===entradaUTI.egreso));
+      pendingMergeUTI = { dni: entradaUTI.dni, cama: entradaUTI.cama, egreso: entradaUTI.egreso, borrarLogs: true };
     }
 
     if(aislamiento!=='ninguno'){
@@ -3789,8 +3803,62 @@ function armarEntradaHistorial(patient, id, fecha, motivo){
     egreso: fecha,
     motivoEgreso: motivo,
     noEvaluado: 'No',
-    sinDatosClinicos: patient.clinico ? 'No' : 'Sí'
+    sinDatosClinicos: patient.clinico ? 'No' : 'Sí',
+    fichaCompletaJSON: (motivo==='Pase a UTI') ? snapshotFichaParaUTI(patient) : ''
   };
+}
+// Copia completa de la ficha (datos clínicos + indicaciones + pendientes) para recuperarla cuando el paciente vuelve de UTI
+function snapshotFichaParaUTI(patient){
+  try{
+    const txt = JSON.stringify({ clinico: patient.clinico || null, indicaciones: patient.indicaciones || null, pendientes: patient.pendientes || null });
+    return txt.length <= 45000 ? txt : ''; // límite de una celda de Google Sheets: 50.000 caracteres
+  }catch(e){ return ''; }
+}
+// Plan de respaldo (pases a UTI anteriores a esta función, sin copia completa): arma la ficha con lo que
+// quedó en la fila resumida de Historial + las hojas Diagnosticos e Intercurrencias de ese pase.
+function reconstruirFichaDesdeHistorial(h){
+  const partir = t => String(t||'').split(',').map(x=>x.trim()).filter(Boolean);
+  const mismo = x => x.dni===h.dni && String(x.cama)===String(h.cama) && x.egreso===h.egreso;
+  const c = {
+    fechaNacimiento: h.fechaNacimiento||'', edad: h.edad||'', nacionalidad: h.nacionalidad||'', situacionVivienda: h.situacionVivienda||'',
+    diagnosticoVIH: h.diagnosticoVIH||'', tiempoDxVIH: h.tiempoDxVIH||'', cd4: h.cd4||'', cv: h.cv||'',
+    vhb: /VHB/.test(h.coinfecciones||''), vhc: /VHC/.test(h.coinfecciones||''),
+    otraCoinfeccion: partir(h.coinfecciones).filter(x=>x!=='VHB'&&x!=='VHC').join(', '),
+    tarv: h.tarv||'', tarvDesde: h.tarvDesde||'', tipoEsquemaTARV: h.tipoEsquemaTARV||'',
+    tarvDrogas: partir(h.tarvDrogas).filter(x=>TARV_DROGAS_OPCIONES.includes(x)),
+    tarvDrogasOtra: partir(h.tarvDrogas).filter(x=>!TARV_DROGAS_OPCIONES.includes(x)).join(', '),
+    tuvoTBPrevia: h.tuvoTBPrevia||'', completoTratamientoTBPrevia: h.completoTratamientoTBPrevia||'',
+    tuvoTB: h.tuvoTB||'', confirmacionTB: h.confirmacionTB||'', esquemaTB: h.esquemaTB||'', tbTipoInicio: h.tbTipoInicio||'',
+    tipoMicobacteria: h.tipoMicobacteria||'', formaClinicaTB: partir(h.formaClinicaTB),
+    internacionPreviaOtroLugar: h.internacionPreviaOtroLugar||'', tiempoInternacionPreviaOtroLugar: h.tiempoInternacionPreviaOtroLugar||'',
+    internacionPreviaPorIO: h.internacionPreviaPorIO||'',
+    antecedenteSifilis: h.antecedenteSifilis||'', vdrl: h.vdrl||'', vdrlDilucion: h.vdrlDilucion||'', vdrlInterpretacion: h.vdrlInterpretacion||'',
+    comorbilidades: partir(h.comorbilidades).filter(x=>COMORB_OPCIONES.includes(x)),
+    comorbilidadesOtras: partir(h.comorbilidades).filter(x=>!COMORB_OPCIONES.includes(x)).join(', '),
+    tieneAlergias: h.tieneAlergias||'', tipoReaccionAlergia: h.tipoReaccionAlergia||'', farmacoAlergia: h.farmacoAlergia||'',
+    trastornoAdiccion: h.trastornoAdiccion||'', pasoPorUTI: 'Sí', evolucion: h.evolucion||''
+  };
+  const diags = [];
+  const iih = [];
+  diagnosticosLog.filter(mismo).forEach(d=>{
+    if(d.categoria==='Tuberculosis' || d.categoria==='Micobacteria atípica') return; // ya viene en los campos de TB
+    if(IIH_OPCIONES.includes(d.categoria)){
+      iih.push({ tipo:d.categoria, tratamiento:d.tratamiento||'', fechaInicioTratamiento:d.fechaInicioTratamiento||'', fechaFinTratamiento:d.fechaFinTratamiento||'' });
+      return;
+    }
+    const esLista = DIAG_OPCIONES.includes(d.categoria);
+    diags.push({ categoria: esLista ? d.categoria : 'Otra', otra: esLista ? '' : d.categoria, estado:d.estado||'', tratamiento:d.tratamiento||'',
+      fechaInicioTratamiento:d.fechaInicioTratamiento||'', fechaFinTratamiento:d.fechaFinTratamiento||'' });
+  });
+  c.diagnosticos = diags;
+  c.tuvoIIH = iih.length ? 'Sí' : (h.infeccionesIH ? 'Sí' : '');
+  c.infeccionesIHDetalle = iih;
+  c.infeccionesIH = iih.map(x=>x.tipo);
+  const ics = intercurrenciasLog.filter(mismo).map(ic=>({ tipo:ic.tipo, tipoRAM:ic.tipoRAM||'', farmacoRAM:ic.farmacoRAM||'', descripcion:ic.descripcion||'', fecha:ic.fecha||'' }));
+  c.tuvoIntercurrencias = ics.length ? 'Sí' : '';
+  c.intercurrenciasDetalle = ics;
+  c.intercurrencias = ics.map(e=>e.tipoRAM ? e.tipo+' ('+e.tipoRAM+')' : e.tipo);
+  return { clinico: c, indicaciones: null, pendientes: null };
 }
 
 // Pacientes actualmente internados (con datos clínicos cargados) que estuvieron en la sala durante el período.
