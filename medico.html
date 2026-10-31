@@ -3254,6 +3254,41 @@ function renderRAMPorFarmaco(containerId, intercurrEnRango, optsExtra, totalPaci
   const enc = nRAM ? 'Pacientes con RAM: '+nRAM+(totalPacientes ? ' de '+totalPacientes+' ('+Math.round(nRAM/totalPacientes*100)+'%)' : '') : '';
   renderColumnasSegmentadas(containerId, rows, Object.assign({leyendaSiempre:true, encabezado:enc}, optsExtra||{}));
 }
+// ----- IIH: tasa por 1000 días-paciente y columnas por tipo -----
+function iihPorEpisodio(h){ return [...new Set((h.infeccionesIH||'').split(',').map(x=>x.trim()).filter(Boolean))]; }
+function calcularTasaIIH(episodios){
+  let nIIH = 0, pacIIH = 0, dias = 0;
+  episodios.forEach(h=>{
+    const t = iihPorEpisodio(h);
+    nIIH += t.length; if(t.length) pacIIH++;
+    const d = diasInternacionEpisodio(h); if(d!==null && !isNaN(d)) dias += Math.max(d,0);
+  });
+  return { nIIH, pacIIH, nPac:episodios.length, dias, tasa: dias>0 ? Math.round(nIIH/dias*10000)/10 : null };
+}
+function fmtTasa(t){ return t===null || t===undefined ? '—' : String(t.toFixed(1)).replace('.',','); }
+function tarjetasIIHHTML(actual, previa){
+  const kpiS = 'background:#F1EFE8; border-radius:6px; padding:8px 6px; text-align:center;';
+  const pct = actual.nPac ? Math.round(actual.pacIIH/actual.nPac*100) : 0;
+  return `<div style="display:grid; grid-template-columns:1fr 1fr; gap:6px; margin-bottom:8px;">
+    <div style="${kpiS}"><div style="font-size:22px; font-weight:800; color:#A32D2D;">${fmtTasa(actual.tasa)}</div><div style="font-size:11px; color:#52514e;">IIH por 1000 días-paciente</div><div style="font-size:10.5px; margin-top:2px;">${previa ? flechaDelta(actual.tasa, previa.tasa, '', true).replace(/(\d+)\.(\d+)/g,'$1,$2') : '<span style="color:#898781;">sin período previo</span>'}</div></div>
+    <div style="${kpiS}"><div style="font-size:22px; font-weight:800; color:#A32D2D;">${actual.pacIIH} / ${actual.nPac}</div><div style="font-size:11px; color:#52514e;">pacientes con IIH (${pct}%) · ${actual.nIIH} episodio(s)</div><div style="font-size:10.5px; color:#898781; margin-top:2px;">${actual.dias} días-paciente</div></div>
+  </div>`;
+}
+function renderIIHColumnas(containerId, episodios, totalPacientes, optsExtra){
+  const porTipo = {};
+  const pacs = new Set();
+  episodios.forEach((h,i)=>{ iihPorEpisodio(h).forEach(t=>{ (porTipo[t] = porTipo[t] || new Set()).add(i); pacs.add(i); }); });
+  const grave = t => /sepsis|shock/i.test(t);
+  const pct = n => totalPacientes ? Math.round(n/totalPacientes*100) : 0;
+  const rows = Object.entries(porTipo).sort((a,b)=>b[1].size-a[1].size).map(([t,set])=>({
+    label:t.replace(/ intrahospitalari[ao]/i,''),
+    sub:set.size+' de '+totalPacientes+' pac. ('+pct(set.size)+'%)',
+    total:set.size,
+    segments:[{label: grave(t) ? 'Sepsis / shock séptico' : 'Otras IIH', count:set.size, color: grave(t) ? '#501313' : '#A32D2D'}]
+  }));
+  const enc = 'Pacientes del período: '+totalPacientes+' · con al menos 1 IIH: '+pacs.size+' ('+pct(pacs.size)+'%)';
+  renderColumnasSegmentadas(containerId, rows, Object.assign({encabezado:enc, leyendaSiempre:false}, optsExtra||{}));
+}
 // Días de internación: con vs. sin intercurrencias (mediana y rango intercuartílico)
 function cuantil(arr, q){
   if(!arr.length) return null;
@@ -4133,7 +4168,7 @@ function generarInformeHTML(desdeISO, hastaISO){
   const pg2 = `<div>
     ${sec(2,'Perfil de los pacientes', '<div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;"><div>'+caja('infEdad','Edad por rango')+'</div><div>'+caja('infReint','Primera vez vs. reinternación')+'</div></div>' + lectura(lecturaPerfil))}
     ${sec(3,'Diagnósticos', caja('infDiag','Oportunistas vs. no oportunistas, por diagnóstico') + lectura(lecturaDiag))}
-    ${sec(4,'Infecciones intrahospitalarias', (m.topIIH.length ? caja('infIIH','Infecciones por tipo') : '') + lectura(lecturaIIH))}
+    ${sec(4,'Infecciones intrahospitalarias', (m.episodios.length ? tarjetasIIHHTML(calcularTasaIIH(m.episodios), hayPrev ? calcularTasaIIH(p.episodios) : null) : '') + (m.topIIH.length ? caja('infIIH','Pacientes por tipo de IIH') : '') + lectura(lecturaIIH))}
   </div>`;
   const pg3 = `<div>
     ${sec(5,'Intercurrencias no infecciosas', caja('infInterc','Intercurrencias por tipo') + (m.intercurrEnRango.some(ic=>ic.tipo==='Reacción adversa medicamentosa (RAM)') ? caja('infRAM','RAM por fármaco implicado') : '') + lectura(lecturaInterc))}
@@ -4150,7 +4185,7 @@ function dibujarGraficosInforme(info){
   renderColumnChart('infEdad', m.edadRangoCountsPeriodo, '#6250d6');
   renderStackedBar('infReint', [{label:'Primera vez', count:m.cantPrimeraVez, color:'#2a78d6'},{label:'Reinternación', count:m.cantReinternacion, color:'#eb6834'}]);
   renderDiagnosticosAgrupados('infDiag', m.diagCounts, {compacto:true});
-  if(document.getElementById('infIIH')) renderBarChart('infIIH', m.topIIH, '#A32D2D');
+  if(document.getElementById('infIIH')) renderIIHColumnas('infIIH', m.episodios, m.totalCaract, {compacto:true});
   renderIntercurrenciasAgrupadas('infInterc', m.intercurrEnRango, m.totalCaract, {compacto:true});
   if(document.getElementById('infRAM')) renderRAMPorFarmaco('infRAM', m.intercurrEnRango, {compacto:true}, m.totalCaract);
   if(document.getElementById('infEstadia')) renderEstadiaIntercurrencias('infEstadia', 'infEstadiaDet', m.episodiosEgresados, intercurrenciasLog);
@@ -4858,6 +4893,7 @@ function renderReportes(opts){
 
     ${incluye('frecuenciaIIH') ? `
     <h3 style="font-size:16.5px; color:var(--teal-dark); margin-bottom:10px;">FRECUENCIA DE INFECCIONES INTRAHOSPITALARIAS (EGRESOS + INTERNADOS)</h3>
+    <div id="cardsIIH"></div>
     <div id="chartFrecuenciaIIH" style="margin-bottom:22px;"></div>` : ''}
 
     ${incluye('prevalenciaGermenes') ? `
@@ -4980,7 +5016,7 @@ function renderReportes(opts){
       {valor:pctFugas+'%', label:'Fugas / contra opinión médica', color:'#eb6834'},
       {valor:pctUTI+'%', label:'Pases a UTI', color:'#eda100'}
     ]);
-    if(incluye('frecuenciaIIH')) renderBarChart('chartFrecuenciaIIH', topIIH, '#C0392B');
+    if(incluye('frecuenciaIIH')){ document.getElementById('cardsIIH').innerHTML = episodios.length ? tarjetasIIHHTML(calcularTasaIIH(episodios), null) : ''; renderIIHColumnas('chartFrecuenciaIIH', episodios, totalCaract); }
     if(incluye('prevalenciaGermenes')) renderBarChart('chartPrevalenciaGermenes', topGermenes, '#9A2E22');
     if(incluye('motivos')){
       const colMotivo = {'Alta médica':'#2a78d6','Pase a UTI':'#eda100','Fuga / contra opinión médica':'#eb6834','Óbito':'#e34948','Pase a otra sala':'#1baf7a','Derivación a otro centro':'#6250d6'};
