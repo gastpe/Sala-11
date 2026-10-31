@@ -889,6 +889,7 @@ function renderFields(){
           <option value="Guardia" ${p.procedencia==='Guardia'?'selected':''}>Guardia</option>
           <option value="UTI" ${p.procedencia==='UTI'?'selected':''}>UTI</option>
           <option value="Derivado de otra sala" ${p.procedencia==='Derivado de otra sala'?'selected':''}>Derivado de otra sala</option>
+          <option value="Derivado de otro centro" ${p.procedencia==='Derivado de otro centro'?'selected':''}>Derivado de otro centro</option>
         </select>
       </div>
       <div class="field"><label>Fecha de ingreso al hospital</label><input type="date" id="fFechaIngresoHospital" value="${esArToISO(p.fechaIngresoHospital)}"></div>
