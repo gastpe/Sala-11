@@ -3136,33 +3136,56 @@ function renderBarrasSegmentadas(containerId, rows, opts){
     </div>`;
   }).join('');
 }
-// Columnas verticales (opcionalmente apiladas). cols: [{label, sub, total, segments:[{label,count,color}]}]
+// Columnas verticales con eje de pacientes y líneas guía. cols: [{label, sub, total, segments:[{label,count,color}]}]
+// opts: compacto, encabezado (texto con totales), leyendaSiempre, tituloEje
 function renderColumnasSegmentadas(containerId, cols, opts){
   const el = document.getElementById(containerId);
   if(!el) return;
   opts = opts || {};
   const c = !!opts.compacto;
   const datos = cols.filter(x=>x.total>0);
-  if(!datos.length){ el.innerHTML = '<p style="color:var(--ink-soft); font-size:'+(c?11.5:15)+'px; margin:0;">Sin datos en este período.</p>'; return; }
-  const max = Math.max(...datos.map(x=>x.total));
-  const alto = c ? 130 : 170;
-  const columnas = datos.map(x=>{
-    const h = Math.max(Math.round(x.total/max*alto), 14);
-    const segs = x.segments.filter(sg=>sg.count>0).slice().reverse().map(sg=>`<div title="${escHtmlRep(sg.label)}: ${sg.count}" style="flex:${sg.count}; background:${sg.color}; display:flex; align-items:center; justify-content:center; color:#fff; font-size:${c?10:11}px; font-weight:800; min-height:2px; overflow:hidden;">${(sg.count/x.total)>=0.2 && x.segments.length>1 ? sg.count : ''}</div>`).join('');
-    return `<div style="flex:1 1 0; min-width:0; max-width:90px; display:flex; flex-direction:column; align-items:center;">
-      <div style="font-size:${c?11:12.5}px; font-weight:800; margin-bottom:2px;">${x.total}</div>
-      <div style="height:${alto}px; width:62%; max-width:46px; display:flex; flex-direction:column; justify-content:flex-end; background:#ECEBE5; border-radius:5px 5px 0 0;">
-        <div style="height:${h}px; display:flex; flex-direction:column; gap:1px; border-radius:5px 5px 0 0; overflow:hidden;">${segs}</div>
-      </div>
-      <div style="font-size:${c?10:11.5}px; font-weight:700; text-align:center; margin-top:4px; line-height:1.2; word-break:break-word; hyphens:auto;">${escHtmlRep(x.label)}</div>
-      ${x.sub ? `<div style="font-size:${c?9.5:10.5}px; color:#52514e; text-align:center; line-height:1.2;">${escHtmlRep(x.sub)}</div>` : ''}
+  const enc = opts.encabezado ? `<div style="font-size:${c?11:13}px; color:#2C2C2A; margin-bottom:4px; font-weight:600;">${escHtmlRep(opts.encabezado)}</div>` : '';
+  if(!datos.length){ el.innerHTML = enc+'<p style="color:var(--ink-soft); font-size:'+(c?11.5:15)+'px; margin:0;">Sin datos en este período.</p>'; return; }
+  const maxV = Math.max(...datos.map(x=>x.total));
+  const paso = maxV<=5 ? 1 : Math.ceil(maxV/5);
+  const eMax = Math.ceil(maxV/paso)*paso;
+  const alto = c ? 120 : 160;
+  const fs = c?10:11.5;
+  const ticks = []; for(let v=0; v<=eMax; v+=paso) ticks.push(v);
+  const yPx = v => (v/eMax*alto);
+  const ejeHTML = ticks.map(v=>`<div style="position:absolute; right:0; bottom:${yPx(v)}px; transform:translateY(50%); font-size:${fs}px; color:#52514e; line-height:1;">${v}</div>`).join('');
+  const guias = ticks.filter(v=>v>0).map(v=>`<div style="position:absolute; left:0; right:0; bottom:${yPx(v)}px; border-top:1px solid #DAD8D0;"></div>`).join('');
+  const colStyle = 'flex:1 1 0; min-width:0; max-width:92px;';
+  const barras = datos.map(x=>{
+    const h = Math.max(yPx(x.total), 3);
+    const suma = x.segments.reduce((a,sg)=>a+sg.count,0);
+    const mostrarNum = x.segments.length>1 && suma===x.total;
+    const segs = x.segments.filter(sg=>sg.count>0).slice().reverse().map(sg=>`<div title="${escHtmlRep(sg.label)}: ${sg.count}" style="flex:${sg.count}; background:${sg.color}; display:flex; align-items:center; justify-content:center; color:#fff; font-size:${fs}px; font-weight:800; min-height:2px; overflow:hidden;">${mostrarNum && (sg.count/x.total)>=0.2 ? sg.count : ''}</div>`).join('');
+    return `<div style="${colStyle} display:flex; flex-direction:column; align-items:center; justify-content:flex-end;">
+      <div style="font-size:${fs+1}px; font-weight:800; line-height:1; margin-bottom:2px;">${x.total}</div>
+      <div style="width:62%; max-width:46px; height:${h}px; display:flex; flex-direction:column; gap:1px; border-radius:4px 4px 0 0; overflow:hidden;">${segs}</div>
     </div>`;
   }).join('');
-  const vistos = {}; 
+  const etiquetas = datos.map(x=>`<div style="${colStyle} text-align:center; padding-top:4px;">
+      <div style="font-size:${fs}px; font-weight:700; line-height:1.2; word-break:break-word;">${escHtmlRep(x.label)}</div>
+      ${x.sub ? `<div style="font-size:${fs-1}px; color:#52514e; line-height:1.25;">${escHtmlRep(x.sub).replace(/\n/g,'<br>')}</div>` : ''}
+    </div>`).join('');
+  const vistos = {};
   datos.forEach(x=>x.segments.forEach(sg=>{ if(sg.label && sg.count>0) vistos[sg.label] = sg.color; }));
   const leyenda = Object.keys(vistos).length>1 || (opts.leyendaSiempre && Object.keys(vistos).length)
     ? '<div style="margin-top:8px; border-top:1px solid #E1E0D9; padding-top:4px;">'+Object.entries(vistos).map(([l,col])=>`<span style="display:inline-flex; align-items:center; gap:4px; margin-right:10px; font-size:${c?10.5:12}px; color:#2C2C2A;"><span style="width:9px; height:9px; border-radius:2px; background:${col};"></span>${escHtmlRep(l)}</span>`).join('')+'</div>' : '';
-  el.innerHTML = `<div style="display:flex; gap:${c?6:10}px; align-items:flex-end; justify-content:flex-start; border-bottom:1.5px solid #B4B2A9; padding-bottom:0;">${columnas}</div>${leyenda}`;
+  el.innerHTML = `${enc}
+    <div style="font-size:${fs-1}px; color:#52514e; margin-bottom:2px;">${escHtmlRep(opts.tituloEje || 'Pacientes')}</div>
+    <div style="display:flex;">
+      <div style="width:22px; flex:none; position:relative; height:${alto}px; margin-top:16px; margin-right:5px;">${ejeHTML}</div>
+      <div style="flex:1; min-width:0;">
+        <div style="position:relative; height:${alto}px; margin-top:16px; border-left:1.5px solid #8F8D85; border-bottom:1.5px solid #8F8D85;">
+          ${guias}
+          <div style="position:absolute; left:0; right:0; bottom:0; top:-16px; padding:0 6px; display:flex; gap:${c?6:10}px; align-items:flex-end;">${barras}</div>
+        </div>
+        <div style="display:flex; gap:${c?6:10}px; padding:0 6px;">${etiquetas}</div>
+      </div>
+    </div>${leyenda}`;
 }
 // Diagnósticos: dos barras grandes (oportunistas / no oportunistas), cada una partida por diagnóstico
 function renderDiagnosticosAgrupados(containerId, diagCounts, optsExtra){
@@ -3184,44 +3207,52 @@ function renderDiagnosticosAgrupados(containerId, diagCounts, optsExtra){
     {label:'No oportunistas — '+totNo, pctTexto:pct(totNo), total:totNo, segments:dividir(noop)}
   ], Object.assign({alto:34}, optsExtra||{}, (optsExtra&&optsExtra.compacto)?{alto:24}:{}));
 }
-// Intercurrencias: una barra por tipo (cantidad y % de pacientes del período); la de RAM se parte por tipo de reacción
+// Intercurrencias: una columna por tipo, eje en pacientes (únicos); la de RAM se parte por tipo de reacción
 function renderIntercurrenciasAgrupadas(containerId, intercurrEnRango, totalPacientes, optsExtra){
   const RAM = 'Reacción adversa medicamentosa (RAM)';
   const porTipo = {};
+  const todos = new Set();
   intercurrEnRango.forEach(ic=>{
     const t = ic.tipo || '(sin especificar)';
     porTipo[t] = porTipo[t] || {n:0, dnis:new Set(), ram:{}};
-    porTipo[t].n++; porTipo[t].dnis.add(ic.dni);
-    if(t===RAM){ const r = ic.tipoRAM || 'Sin especificar'; porTipo[t].ram[r] = (porTipo[t].ram[r]||0)+1; }
+    porTipo[t].n++; porTipo[t].dnis.add(ic.dni); todos.add(ic.dni);
+    if(t===RAM){ const r = ic.tipoRAM || 'Sin especificar'; (porTipo[t].ram[r] = porTipo[t].ram[r] || new Set()).add(ic.dni); }
   });
-  const rows = Object.entries(porTipo).sort((a,b)=>b[1].n-a[1].n).map(([t,v])=>{
-    const pctPac = totalPacientes ? Math.round(v.dnis.size/totalPacientes*100) : 0;
+  const pct = n => totalPacientes ? Math.round(n/totalPacientes*100) : 0;
+  const rows = Object.entries(porTipo).sort((a,b)=>b[1].dnis.size-a[1].dnis.size || b[1].n-a[1].n).map(([t,v])=>{
     const segments = t===RAM
-      ? Object.entries(v.ram).sort((a,b)=>b[1]-a[1]).map(([r,n],i)=>({label:r, count:n, color:PALETA_SEG[i%PALETA_SEG.length]}))
-      : [{label:t, count:v.n, color:'#6E4FA0'}];
-    return {label:t.replace(' (RAM)','').replace('Reacción adversa medicamentosa','RAM'), sub:v.dnis.size+' pac. ('+pctPac+'%)', total:v.n,
-      segments: t===RAM ? segments : segments.map(sg=>({...sg,label:''}))};
+      ? Object.entries(v.ram).sort((a,b)=>b[1].size-a[1].size).map(([r,set],i)=>({label:r, count:set.size, color:PALETA_SEG[i%PALETA_SEG.length]}))
+      : [{label:'', count:v.dnis.size, color:'#6E4FA0'}];
+    return {label:t.replace(' (RAM)','').replace('Reacción adversa medicamentosa','RAM'),
+      sub:v.dnis.size+' de '+totalPacientes+' pac. ('+pct(v.dnis.size)+'%)\n'+v.n+(v.n===1?' evento':' eventos'),
+      total:v.dnis.size, segments};
   });
-  renderColumnasSegmentadas(containerId, rows, optsExtra);
+  const enc = 'Pacientes del período: '+totalPacientes+' · con al menos 1 intercurrencia: '+todos.size+' ('+pct(todos.size)+'%)';
+  renderColumnasSegmentadas(containerId, rows, Object.assign({encabezado:enc}, optsExtra||{}));
 }
-// RAM por fármaco implicado, partida por tipo de reacción
-function renderRAMPorFarmaco(containerId, intercurrEnRango, optsExtra){
+// RAM por fármaco implicado (pacientes únicos), partida por tipo de reacción
+function renderRAMPorFarmaco(containerId, intercurrEnRango, optsExtra, totalPacientes){
   const RAM = 'Reacción adversa medicamentosa (RAM)';
   const norm = t => String(t||'').trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/\s+/g,' ');
   const farm = {};
+  const dnisRAM = new Set();
   intercurrEnRango.filter(ic=>ic.tipo===RAM).forEach(ic=>{
+    dnisRAM.add(ic.dni);
     const k = norm(ic.farmacoRAM) || '(sin especificar)';
-    farm[k] = farm[k] || {nombre:(ic.farmacoRAM||'').trim() || '(sin especificar)', total:0, tipos:{}};
-    farm[k].total++;
+    farm[k] = farm[k] || {nombre:(ic.farmacoRAM||'').trim() || '(sin especificar)', dnis:new Set(), tipos:{}};
+    farm[k].dnis.add(ic.dni);
     const r = ic.tipoRAM || 'Sin especificar';
-    farm[k].tipos[r] = (farm[k].tipos[r]||0)+1;
+    (farm[k].tipos[r] = farm[k].tipos[r] || new Set()).add(ic.dni);
   });
   const tiposTodos = [...new Set(Object.values(farm).flatMap(f=>Object.keys(f.tipos)))];
   const color = {}; tiposTodos.forEach((t,i)=>{ color[t] = PALETA_SEG[i%PALETA_SEG.length]; });
-  const rows = Object.values(farm).sort((a,b)=>b.total-a.total).map(f=>({
-    label:f.nombre, total:f.total, segments:Object.entries(f.tipos).map(([t,n])=>({label:t, count:n, color:color[t]}))
+  const nRAM = dnisRAM.size;
+  const rows = Object.values(farm).sort((a,b)=>b.dnis.size-a.dnis.size).map(f=>({
+    label:f.nombre, total:f.dnis.size, sub:f.dnis.size+' de '+nRAM+' pac. con RAM',
+    segments:Object.entries(f.tipos).map(([t,set])=>({label:t, count:set.size, color:color[t]}))
   }));
-  renderColumnasSegmentadas(containerId, rows, Object.assign({leyendaSiempre:true}, optsExtra||{}));
+  const enc = nRAM ? 'Pacientes con RAM: '+nRAM+(totalPacientes ? ' de '+totalPacientes+' ('+Math.round(nRAM/totalPacientes*100)+'%)' : '') : '';
+  renderColumnasSegmentadas(containerId, rows, Object.assign({leyendaSiempre:true, encabezado:enc}, optsExtra||{}));
 }
 // Días de internación: con vs. sin intercurrencias (mediana y rango intercuartílico)
 function cuantil(arr, q){
@@ -4121,7 +4152,7 @@ function dibujarGraficosInforme(info){
   renderDiagnosticosAgrupados('infDiag', m.diagCounts, {compacto:true});
   if(document.getElementById('infIIH')) renderBarChart('infIIH', m.topIIH, '#A32D2D');
   renderIntercurrenciasAgrupadas('infInterc', m.intercurrEnRango, m.totalCaract, {compacto:true});
-  if(document.getElementById('infRAM')) renderRAMPorFarmaco('infRAM', m.intercurrEnRango, {compacto:true});
+  if(document.getElementById('infRAM')) renderRAMPorFarmaco('infRAM', m.intercurrEnRango, {compacto:true}, m.totalCaract);
   if(document.getElementById('infEstadia')) renderEstadiaIntercurrencias('infEstadia', 'infEstadiaDet', m.episodiosEgresados, intercurrenciasLog);
   const colMotivo = {'Alta médica':'#2a78d6','Pase a UTI':'#eda100','Fuga / contra opinión médica':'#eb6834','Óbito':'#e34948','Pase a otra sala':'#1baf7a','Derivación a otro centro':'#6250d6'};
   renderStackedBar('infMotivos', Object.entries(m.motivos).sort((a,b)=>b[1]-a[1]).map(([k,n])=>({label:k, count:n, color:colMotivo[k]||'#898781'})));
@@ -4958,7 +4989,7 @@ function renderReportes(opts){
     if(incluye('diagnosticos')) renderDiagnosticosAgrupados('chartDiagnosticos', diagCounts);
     if(incluye('intercurrenciasPeriodo')){
       renderIntercurrenciasAgrupadas('chartIntercurrencias', intercurrEnRango, totalCaract);
-      renderRAMPorFarmaco('chartRAMFarmaco', intercurrEnRango);
+      renderRAMPorFarmaco('chartRAMFarmaco', intercurrEnRango, null, totalCaract);
     }
     if(incluye('estadiaIntercurrencias')) renderEstadiaIntercurrencias('chartEstadiaInterc', 'chartEstadiaIntercDetalle', episodiosEgresados, intercurrenciasLog);
     if(incluye('medicos')) renderBarChart('chartMedicos', topMedicos, '#2563AF');
