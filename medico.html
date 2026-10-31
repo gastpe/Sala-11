@@ -308,7 +308,7 @@
     @page{ size:A4; margin:8mm; }
   }
   /* Vista previa de indicaciones: tamaño real de la hoja A4 (210mm - 2x8mm de margen) */
-  #indicacionesOverlay{ align-items:flex-start; overflow:auto; }
+  #indicacionesOverlay, #informeOverlay{ align-items:flex-start; overflow:auto; }
   .modal.modal-hoja{ width:194mm; max-width:none; max-height:none; overflow:visible; flex:none; margin:0 auto; box-sizing:content-box; padding:8mm; box-shadow:0 4px 24px rgba(0,0,0,.25); }
   body.print-mode .modal.modal-hoja{ zoom:1 !important; box-sizing:border-box; }
   body.print-mode > *:not(.overlay){ display:none !important; }
@@ -525,6 +525,17 @@
   </div>
 </div>
 
+<!-- Informe del período (hoja A4 imprimible) -->
+<div class="overlay" id="informeOverlay">
+  <div class="modal modal-hoja" id="informeModal">
+    <div class="print-area" id="informePrintSheet"></div>
+    <div class="modal-actions" style="margin-top:18px;">
+      <button class="btn ghost" onclick="cerrarInformePeriodo()">Volver</button>
+      <button class="btn" onclick="imprimirInformePeriodo()">Imprimir / guardar PDF</button>
+    </div>
+  </div>
+</div>
+
 <div class="overlay" id="pendientesResumenOverlay">
   <div class="modal">
     <button class="close-x" onclick="closePendientesResumen()">✕</button>
@@ -558,6 +569,7 @@
       <div class="field" style="flex:1; min-width:140px; margin-bottom:0;"><label>Hasta</label><input type="date" id="repHasta"></div>
       <button class="btn" style="height:38px;" onclick="renderReportes()">Aplicar</button>
       <button class="btn ghost" style="height:38px;" onclick="exportarHistorialCSV()">⬇️ Descargar CSV</button>
+      <button class="btn ghost" id="btnInformePeriodo" style="height:38px;" onclick="abrirInformePeriodo()">📄 Informe del período</button>
     </div>
     <div class="print-area" id="reportesPrintArea">
       <h2 style="font-size:18.9px; margin-bottom:2px;">Reportes — Sala 11</h2>
@@ -2960,6 +2972,7 @@ function imprimirAhora(){
 }
 window.addEventListener('afterprint', ()=> {
   document.body.classList.remove('print-mode');
+  if(informeVolviendoDeImprimir){ informeVolviendoDeImprimir = false; ajustarHojaA4('informeModal'); }
   if(volviendoDeImprimirIndicaciones){
     volviendoDeImprimirIndicaciones = false;
     document.getElementById('indicacionesOverlay').classList.remove('show');
@@ -3090,6 +3103,220 @@ function renderStackedBar(containerId, segments){
   const legend = segments.map(s=>`<span style="display:inline-flex; align-items:center; gap:5px; margin-right:16px; font-size:13px; margin-top:6px;"><span style="width:11px; height:11px; border-radius:3px; background:${s.color}; display:inline-block;"></span>${s.label} (${s.count})</span>`).join('');
   el.innerHTML = `<div style="display:flex; height:36px; border-radius:8px; overflow:hidden;">${bar}</div><div>${legend}</div>`;
 }
+
+/* ---------- Gráficos nuevos de reportes ---------- */
+const IO_NOMBRES = DIAG_OPCIONES.filter(op=>op!=='No oportunista (otra causa)').concat(['Tuberculosis','Micobacteria atípica']);
+const PALETA_SEG = ['#2a78d6','#eb6834','#1baf7a','#eda100','#6250d6','#e87ba4','#008300','#e34948'];
+function escHtmlRep(t){ return String(t==null?'':t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+// Filas con barra segmentada. rows: [{label, total, pctTexto, segments:[{label,count,color}]}]. El largo de cada barra es proporcional a su total.
+function renderBarrasSegmentadas(containerId, rows, opts){
+  const el = document.getElementById(containerId);
+  if(!el) return;
+  opts = opts || {};
+  const c = !!opts.compacto;
+  const filas = rows.filter(r=>r.total>0);
+  if(!filas.length){ el.innerHTML = '<p style="color:var(--ink-soft); font-size:'+(c?11.5:15)+'px; margin:0;">Sin datos en este período.</p>'; return; }
+  const max = Math.max(...filas.map(r=>r.total));
+  const alto = opts.alto || (c ? 20 : 28);
+  el.innerHTML = filas.map((r,idx)=>{
+    const ancho = Math.max(Math.round((r.total/max)*100), 8);
+    const segs = r.segments.filter(sg=>sg.count>0).map(sg=>{
+      const mostrar = (sg.count/r.total) >= 0.12;
+      return `<div title="${escHtmlRep(sg.label)}: ${sg.count}" style="flex:${sg.count}; background:${sg.color}; display:flex; align-items:center; justify-content:center; color:#fff; font-size:${c?10.5:11.5}px; font-weight:800; min-width:2px; overflow:hidden;">${mostrar ? sg.count : ''}</div>`;
+    }).join('');
+    const leyenda = (r.segments.length===1 && !r.segments[0].label) ? '' : r.segments.filter(sg=>sg.count>0).map(sg=>{
+      const pct = Math.round((sg.count/r.total)*100);
+      return `<span style="display:inline-flex; align-items:center; gap:4px; margin-right:10px; font-size:${c?10.5:12.5}px; margin-top:2px; color:#2C2C2A;"><span style="width:9px; height:9px; border-radius:2px; background:${sg.color};"></span>${escHtmlRep(sg.label)} ${sg.count} (${pct}%)</span>`;
+    }).join('');
+    const ultima = idx===filas.length-1;
+    return `<div style="padding:${c?'5px 0':'8px 0'}; ${ultima?'':'border-bottom:1px solid #E1E0D9;'}">
+      <div style="font-size:${c?11.5:14}px; font-weight:800; margin-bottom:3px;">${escHtmlRep(r.label)}${r.pctTexto ? ' <span style="font-weight:600; color:#52514e;">'+escHtmlRep(r.pctTexto)+'</span>' : ''}</div>
+      <div style="background:#ECEBE5; border-radius:5px; height:${alto}px; width:100%;"><div style="display:flex; gap:2px; height:100%; border-radius:5px; overflow:hidden; width:${ancho}%;">${segs}</div></div>
+      <div style="line-height:1.35;">${leyenda}</div>
+    </div>`;
+  }).join('');
+}
+// Columnas verticales (opcionalmente apiladas). cols: [{label, sub, total, segments:[{label,count,color}]}]
+function renderColumnasSegmentadas(containerId, cols, opts){
+  const el = document.getElementById(containerId);
+  if(!el) return;
+  opts = opts || {};
+  const c = !!opts.compacto;
+  const datos = cols.filter(x=>x.total>0);
+  if(!datos.length){ el.innerHTML = '<p style="color:var(--ink-soft); font-size:'+(c?11.5:15)+'px; margin:0;">Sin datos en este período.</p>'; return; }
+  const max = Math.max(...datos.map(x=>x.total));
+  const alto = c ? 130 : 170;
+  const columnas = datos.map(x=>{
+    const h = Math.max(Math.round(x.total/max*alto), 14);
+    const segs = x.segments.filter(sg=>sg.count>0).slice().reverse().map(sg=>`<div title="${escHtmlRep(sg.label)}: ${sg.count}" style="flex:${sg.count}; background:${sg.color}; display:flex; align-items:center; justify-content:center; color:#fff; font-size:${c?10:11}px; font-weight:800; min-height:2px; overflow:hidden;">${(sg.count/x.total)>=0.2 && x.segments.length>1 ? sg.count : ''}</div>`).join('');
+    return `<div style="flex:1 1 0; min-width:0; max-width:90px; display:flex; flex-direction:column; align-items:center;">
+      <div style="font-size:${c?11:12.5}px; font-weight:800; margin-bottom:2px;">${x.total}</div>
+      <div style="height:${alto}px; width:62%; max-width:46px; display:flex; flex-direction:column; justify-content:flex-end; background:#ECEBE5; border-radius:5px 5px 0 0;">
+        <div style="height:${h}px; display:flex; flex-direction:column; gap:1px; border-radius:5px 5px 0 0; overflow:hidden;">${segs}</div>
+      </div>
+      <div style="font-size:${c?10:11.5}px; font-weight:700; text-align:center; margin-top:4px; line-height:1.2; word-break:break-word; hyphens:auto;">${escHtmlRep(x.label)}</div>
+      ${x.sub ? `<div style="font-size:${c?9.5:10.5}px; color:#52514e; text-align:center; line-height:1.2;">${escHtmlRep(x.sub)}</div>` : ''}
+    </div>`;
+  }).join('');
+  const vistos = {}; 
+  datos.forEach(x=>x.segments.forEach(sg=>{ if(sg.label && sg.count>0) vistos[sg.label] = sg.color; }));
+  const leyenda = Object.keys(vistos).length>1 || (opts.leyendaSiempre && Object.keys(vistos).length)
+    ? '<div style="margin-top:8px; border-top:1px solid #E1E0D9; padding-top:4px;">'+Object.entries(vistos).map(([l,col])=>`<span style="display:inline-flex; align-items:center; gap:4px; margin-right:10px; font-size:${c?10.5:12}px; color:#2C2C2A;"><span style="width:9px; height:9px; border-radius:2px; background:${col};"></span>${escHtmlRep(l)}</span>`).join('')+'</div>' : '';
+  el.innerHTML = `<div style="display:flex; gap:${c?6:10}px; align-items:flex-end; justify-content:flex-start; border-bottom:1.5px solid #B4B2A9; padding-bottom:0;">${columnas}</div>${leyenda}`;
+}
+// Diagnósticos: dos barras grandes (oportunistas / no oportunistas), cada una partida por diagnóstico
+function renderDiagnosticosAgrupados(containerId, diagCounts, optsExtra){
+  const dividir = lista => {
+    const orden = lista.sort((a,b)=>b[1]-a[1]);
+    const top = orden.slice(0,6);
+    const resto = orden.slice(6).reduce((a,x)=>a+x[1],0);
+    const segs = top.map(([cat,n],i)=>({label:cat, count:n, color:PALETA_SEG[i]}));
+    if(resto) segs.push({label:'Otros', count:resto, color:'#898781'});
+    return segs;
+  };
+  const entradas = Object.entries(diagCounts);
+  const op = entradas.filter(([cat])=>IO_NOMBRES.includes(cat));
+  const noop = entradas.filter(([cat])=>!IO_NOMBRES.includes(cat));
+  const totOp = op.reduce((a,x)=>a+x[1],0), totNo = noop.reduce((a,x)=>a+x[1],0), tot = totOp+totNo;
+  const pct = n => tot ? Math.round(n/tot*100)+'%' : '';
+  renderBarrasSegmentadas(containerId, [
+    {label:'Oportunistas — '+totOp, pctTexto:pct(totOp), total:totOp, segments:dividir(op)},
+    {label:'No oportunistas — '+totNo, pctTexto:pct(totNo), total:totNo, segments:dividir(noop)}
+  ], Object.assign({alto:34}, optsExtra||{}, (optsExtra&&optsExtra.compacto)?{alto:24}:{}));
+}
+// Intercurrencias: una barra por tipo (cantidad y % de pacientes del período); la de RAM se parte por tipo de reacción
+function renderIntercurrenciasAgrupadas(containerId, intercurrEnRango, totalPacientes, optsExtra){
+  const RAM = 'Reacción adversa medicamentosa (RAM)';
+  const porTipo = {};
+  intercurrEnRango.forEach(ic=>{
+    const t = ic.tipo || '(sin especificar)';
+    porTipo[t] = porTipo[t] || {n:0, dnis:new Set(), ram:{}};
+    porTipo[t].n++; porTipo[t].dnis.add(ic.dni);
+    if(t===RAM){ const r = ic.tipoRAM || 'Sin especificar'; porTipo[t].ram[r] = (porTipo[t].ram[r]||0)+1; }
+  });
+  const rows = Object.entries(porTipo).sort((a,b)=>b[1].n-a[1].n).map(([t,v])=>{
+    const pctPac = totalPacientes ? Math.round(v.dnis.size/totalPacientes*100) : 0;
+    const segments = t===RAM
+      ? Object.entries(v.ram).sort((a,b)=>b[1]-a[1]).map(([r,n],i)=>({label:r, count:n, color:PALETA_SEG[i%PALETA_SEG.length]}))
+      : [{label:t, count:v.n, color:'#6E4FA0'}];
+    return {label:t.replace(' (RAM)','').replace('Reacción adversa medicamentosa','RAM'), sub:v.dnis.size+' pac. ('+pctPac+'%)', total:v.n,
+      segments: t===RAM ? segments : segments.map(sg=>({...sg,label:''}))};
+  });
+  renderColumnasSegmentadas(containerId, rows, optsExtra);
+}
+// RAM por fármaco implicado, partida por tipo de reacción
+function renderRAMPorFarmaco(containerId, intercurrEnRango, optsExtra){
+  const RAM = 'Reacción adversa medicamentosa (RAM)';
+  const norm = t => String(t||'').trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/\s+/g,' ');
+  const farm = {};
+  intercurrEnRango.filter(ic=>ic.tipo===RAM).forEach(ic=>{
+    const k = norm(ic.farmacoRAM) || '(sin especificar)';
+    farm[k] = farm[k] || {nombre:(ic.farmacoRAM||'').trim() || '(sin especificar)', total:0, tipos:{}};
+    farm[k].total++;
+    const r = ic.tipoRAM || 'Sin especificar';
+    farm[k].tipos[r] = (farm[k].tipos[r]||0)+1;
+  });
+  const tiposTodos = [...new Set(Object.values(farm).flatMap(f=>Object.keys(f.tipos)))];
+  const color = {}; tiposTodos.forEach((t,i)=>{ color[t] = PALETA_SEG[i%PALETA_SEG.length]; });
+  const rows = Object.values(farm).sort((a,b)=>b.total-a.total).map(f=>({
+    label:f.nombre, total:f.total, segments:Object.entries(f.tipos).map(([t,n])=>({label:t, count:n, color:color[t]}))
+  }));
+  renderColumnasSegmentadas(containerId, rows, Object.assign({leyendaSiempre:true}, optsExtra||{}));
+}
+// Días de internación: con vs. sin intercurrencias (mediana y rango intercuartílico)
+function cuantil(arr, q){
+  if(!arr.length) return null;
+  const a = [...arr].sort((x,y)=>x-y);
+  const pos = (a.length-1)*q, b = Math.floor(pos), r = pos-b;
+  return a[b+1]!==undefined ? a[b]+r*(a[b+1]-a[b]) : a[b];
+}
+function diasInternacionEpisodio(h){
+  const ing = parseEsAr(h.ingresoSala), eg = parseEsAr(h.egreso);
+  if(!ing || !eg) return null;
+  let d = daysBetween(ing, eg);
+  (h.pasesUTI||[]).forEach(p=>{
+    const a = parseEsAr(p.desde), b = parseEsAr(p.hasta);
+    if(a && b) d -= Math.max(0, daysBetween(a,b));
+  });
+  return d>=0 ? d : null;
+}
+function renderEstadiaIntercurrencias(idPrincipal, idDetalle, episodiosEgresados, intercurrLog){
+  const el = document.getElementById(idPrincipal);
+  if(!el) return;
+  const tiposPorEpisodio = {};
+  intercurrLog.forEach(ic=>{
+    const k = ic.dni+'|'+ic.cama+'|'+ic.egreso;
+    (tiposPorEpisodio[k] = tiposPorEpisodio[k] || new Set()).add(ic.tipo||'(sin especificar)');
+  });
+  const con = [], sin = [], porTipo = {};
+  episodiosEgresados.forEach(h=>{
+    const d = diasInternacionEpisodio(h);
+    if(d===null) return;
+    const tipos = tiposPorEpisodio[h.dni+'|'+h.cama+'|'+h.egreso];
+    if(tipos && tipos.size){ con.push(d); tipos.forEach(t=>{ (porTipo[t] = porTipo[t] || []).push(d); }); }
+    else sin.push(d);
+  });
+  if(!con.length && !sin.length){ el.innerHTML = '<p style="color:var(--ink-soft); font-size:15px;">Sin datos en este período.</p>'; return; }
+  const grupos = [{nombre:'Sin intercurrencias', arr:sin, color:'#2a78d6'}, {nombre:'Con intercurrencias', arr:con, color:'#eb6834'}];
+  const maxEscala = Math.max(10, ...grupos.map(g=>cuantil(g.arr,0.75)||0), ...grupos.map(g=>cuantil(g.arr,0.5)||0));
+  const escala = Math.ceil(maxEscala*1.25/10)*10;
+  const pos = v => (v/escala*100).toFixed(1);
+  const fila = g => {
+    if(!g.arr.length) return `<div style="display:grid; grid-template-columns:150px 1fr; gap:10px; margin-bottom:12px; font-size:13px;"><div>${g.nombre}<small style="display:block; color:var(--ink-soft);">n = 0</small></div><div style="color:var(--ink-soft);">Sin pacientes</div></div>`;
+    const q1 = cuantil(g.arr,0.25), med = cuantil(g.arr,0.5), q3 = cuantil(g.arr,0.75);
+    const prom = g.arr.reduce((a,b)=>a+b,0)/g.arr.length;
+    return `<div style="display:grid; grid-template-columns:150px 1fr; gap:10px; align-items:center; margin-bottom:14px;">
+      <div style="font-size:13.5px;">${g.nombre}<small style="display:block; font-size:11.5px; color:var(--ink-soft);">n = ${g.arr.length}${g.arr.length<5?' · pocos casos':''}</small></div>
+      <div style="position:relative; height:30px;">
+        <div style="position:absolute; left:0; right:0; top:14px; height:2px; background:#E5E9EC;"></div>
+        <div style="position:absolute; top:10px; height:10px; border-radius:5px; background:${g.color}; opacity:.28; left:${pos(q1)}%; width:${Math.max(pos(q3)-pos(q1),1)}%;"></div>
+        <div style="position:absolute; top:3px; width:4px; height:24px; border-radius:2px; background:${g.color}; left:${pos(med)}%; transform:translateX(-2px);"></div>
+        <div style="position:absolute; top:-2px; left:${pos(med)}%; transform:${pos(med)>50?'translateX(calc(-100% - 8px))':'translateX(8px)'}; font-size:12px; font-weight:700; white-space:nowrap;">Mediana ${Math.round(med*10)/10} d · prom. ${Math.round(prom*10)/10}</div>
+      </div>
+    </div>`;
+  };
+  const marcas = [0,0.25,0.5,0.75,1].map(f=>`<span style="position:absolute; left:${f*100}%; transform:translateX(-50%);">${Math.round(escala*f)}</span>`).join('');
+  el.innerHTML = fila(grupos[0]) + fila(grupos[1]) +
+    `<div style="display:grid; grid-template-columns:150px 1fr; gap:10px;"><div></div><div style="position:relative; height:16px; font-size:11px; color:#8A93A0;">${marcas}</div></div>
+     <p style="font-size:11.5px; color:var(--ink-soft); margin:8px 0 0;">Escala en días. La marca es la mediana; la banda cubre el rango intercuartílico (25%–75%). Es una asociación, no una causa: quien se interna más tiempo tiene más oportunidad de tener una intercurrencia. Sólo egresados; los días en UTI se descuentan.</p>`;
+  const det = document.getElementById(idDetalle);
+  if(det){
+    const filas = Object.entries(porTipo).sort((a,b)=>cuantil(b[1],0.5)-cuantil(a[1],0.5));
+    if(!filas.length){ det.innerHTML=''; return; }
+    const maxM = Math.max(1, cuantil(sin,0.5)||0, ...filas.map(([,a])=>cuantil(a,0.5)));
+    const linea = (nombre, arr, color) => {
+      const m = cuantil(arr,0.5);
+      return `<div style="display:grid; grid-template-columns:200px 1fr; gap:8px; align-items:center; margin-bottom:7px; font-size:13px;">
+        <span>${escHtmlRep(nombre)} <span style="color:var(--ink-soft);">(n=${arr.length})</span></span>
+        <div style="display:flex; align-items:center; gap:6px;"><div style="height:16px; border-radius:4px; background:${color}; width:${Math.max(m/maxM*70,2)}%;"></div><strong>${Math.round(m*10)/10} d</strong></div></div>`;
+    };
+    det.innerHTML = '<p style="font-size:12.5px; color:var(--ink-soft); margin:10px 0 6px;">Mediana de días según tipo de intercurrencia (un paciente con varias cuenta en cada una; gris = menos de 5 pacientes).</p>' +
+      filas.map(([t,arr])=>linea(t.replace(' (RAM)',''), arr, arr.length<5?'#B4B2A9':'#eb6834')).join('') +
+      (sin.length ? linea('Sin intercurrencias', sin, '#2a78d6') : '');
+  }
+}
+// Mediana y rango de días de tratamiento por diagnóstico
+function renderRangoTratamiento(containerId, duracionPorDiag){
+  const el = document.getElementById(containerId);
+  const items = Object.entries(duracionPorDiag).map(([cat,arr])=>({cat, arr, med:cuantil(arr,0.5), min:Math.min(...arr), max:Math.max(...arr)})).sort((a,b)=>b.med-a.med);
+  if(!items.length){ el.innerHTML = '<p style="color:var(--ink-soft); font-size:15px;">Sin datos en este período.</p>'; return; }
+  const escala = Math.max(...items.map(i=>i.max));
+  const pos = v => (v/escala*100).toFixed(1);
+  el.innerHTML = items.map(i=>`<div style="display:grid; grid-template-columns:170px 1fr; gap:10px; align-items:center; margin-bottom:12px;">
+    <div style="font-size:13.5px;">${escHtmlRep(i.cat)}<small style="display:block; font-size:11.5px; color:var(--ink-soft);">n = ${i.arr.length}</small></div>
+    <div style="position:relative; height:28px;">
+      <div style="position:absolute; left:0; right:0; top:13px; height:2px; background:#E5E9EC;"></div>
+      <div style="position:absolute; top:9px; height:10px; border-radius:5px; background:#6E4FA0; opacity:.3; left:${pos(i.min)}%; width:${Math.max(pos(i.max)-pos(i.min),1)}%;"></div>
+      <div style="position:absolute; top:3px; width:4px; height:22px; border-radius:2px; background:#6E4FA0; left:${pos(i.med)}%; transform:translateX(-2px);"></div>
+      <div style="position:absolute; top:-3px; left:${pos(i.max)}%; transform:${pos(i.max)>60?'translateX(calc(-100% - 6px))':'translateX(6px)'}; font-size:11.5px; white-space:nowrap; font-weight:700;">med. ${Math.round(i.med*10)/10} d (${i.min}–${i.max})</div>
+    </div></div>`).join('') + '<p style="font-size:11.5px; color:var(--ink-soft); margin:4px 0 0;">Marca = mediana; banda = rango mínimo–máximo de días de tratamiento.</p>';
+}
+// Tarjetas de números grandes
+function renderTarjetas(containerId, items){
+  const el = document.getElementById(containerId);
+  el.innerHTML = `<div style="display:grid; grid-template-columns:repeat(${items.length},1fr); gap:10px;">${items.map(it=>`<div style="background:#F4F6F7; border-radius:10px; padding:12px; text-align:center;"><div style="font-size:30px; font-weight:800; color:${it.color};">${it.valor}</div><div style="font-size:12.5px; color:var(--ink-soft);">${it.label}</div></div>`).join('')}</div>`;
+}
+
 function renderPercentBars(containerId, items){
   const el = document.getElementById(containerId);
   if(!items.length){ el.innerHTML = '<p style="color:var(--ink-soft); font-size:15px;">Sin datos en este período.</p>'; return; }
@@ -3620,6 +3847,7 @@ const REPORT_SECCIONES = [
   {key:'motivos', label:'Motivos de egreso', grupo:'periodo'},
   {key:'diagnosticos', label:'Diagnósticos más frecuentes', grupo:'periodo'},
   {key:'intercurrenciasPeriodo', label:'Intercurrencias no infecciosas', grupo:'periodo'},
+  {key:'estadiaIntercurrencias', label:'Días de internación: con vs. sin intercurrencias', grupo:'periodo'},
   {key:'oportunistasPeriodo', label:'Oportunistas vs. no oportunistas', grupo:'periodo'},
   {key:'sifilisPeriodo', label:'Sífilis diagnosticada en la internación', grupo:'periodo'},
   {key:'vdrlInterpretacionPeriodo', label:'Interpretación de VDRL positivas', grupo:'periodo'},
@@ -3754,6 +3982,173 @@ function openReportes(){
   renderReportes();
   document.getElementById('reportesOverlay').classList.add('show');
 }
+
+/* ---------- Informe del período (formato combinado: lectura rápida + secciones con gráficos) ---------- */
+function ajustarHojaA4(modalId){
+  const m = document.getElementById(modalId);
+  if(!m) return;
+  m.style.zoom = 1;
+  const ancho = m.getBoundingClientRect().width;
+  const disp = window.innerWidth - 24;
+  m.style.zoom = ancho > disp ? (disp/ancho) : 1;
+}
+window.addEventListener('resize', ()=>{ const o = document.getElementById('informeOverlay'); if(o && o.classList.contains('show')) ajustarHojaA4('informeModal'); });
+function calcularMetricasPeriodo(desdeISO, hastaISO){
+  const iD = document.getElementById('repDesde'), iH = document.getElementById('repHasta');
+  const guardD = iD.value, guardH = iH.value;
+  iD.value = desdeISO; iH.value = hastaISO;
+  let m;
+  try{ m = renderReportes({soloMetricas:true}); } finally { iD.value = guardD; iH.value = guardH; }
+  return m;
+}
+function isoMasDias(iso, dias){
+  const d = new Date(iso+'T00:00:00'); d.setDate(d.getDate()+dias);
+  return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+}
+function fmtFechaISO(iso){ return new Date(iso+'T00:00:00').toLocaleDateString('es-AR'); }
+function resumenPeriodo(m, desdeISO, hastaISO){
+  const oc = computeOcupacionDiaria(new Date(desdeISO+'T00:00:00'), new Date(hastaISO+'T23:59:59'));
+  const ocupProm = (oc && !oc.vacio && oc.values.length) ? Math.round(oc.values.reduce((a,b)=>a+b,0)/oc.values.length*10)/10 : null;
+  const estMed = m.estadias.length ? Math.round(cuantil(m.estadias,0.5)*10)/10 : null;
+  return { m, oc, ocupProm, estMed };
+}
+function flechaDelta(actual, previo, unidad, mejorSiBaja){
+  if(actual===null || previo===null || actual===undefined || previo===undefined) return '<span style="color:#898781;">sin período previo</span>';
+  const d = Math.round((actual-previo)*10)/10;
+  if(d===0) return '<span style="color:#898781;">= igual que el previo</span>';
+  const sube = d>0;
+  const bueno = mejorSiBaja===null ? null : (mejorSiBaja ? !sube : sube);
+  const color = bueno===null ? '#52514e' : (bueno ? '#0F6E56' : '#A32D2D');
+  return `<span style="color:${color}; font-weight:700;">${sube?'▲':'▼'} ${Math.abs(d)}${unidad}</span> <span style="color:#898781;">vs. previo</span>`;
+}
+function textoLista(arr){ return arr.length<=1 ? (arr[0]||'') : arr.slice(0,-1).join(', ')+' y '+arr[arr.length-1]; }
+function generarInformeHTML(desdeISO, hastaISO){
+  const cur = resumenPeriodo(calcularMetricasPeriodo(desdeISO, hastaISO), desdeISO, hastaISO);
+  const dias = Math.round((new Date(hastaISO+'T00:00:00') - new Date(desdeISO+'T00:00:00'))/86400000)+1;
+  const prevHasta = isoMasDias(desdeISO,-1), prevDesde = isoMasDias(prevHasta, -(dias-1));
+  const prev = resumenPeriodo(calcularMetricasPeriodo(prevDesde, prevHasta), prevDesde, prevHasta);
+  const m = cur.m, p = prev.m;
+  const hayPrev = p.totalEgresos > 0;
+  const E = escHtmlRep;
+  const sinDatos = m.totalEgresos===0 && m.totalCaract===0;
+
+  // ----- Texto: lo más importante -----
+  const frases = [];
+  frases.push(`Entre el ${fmtFechaISO(desdeISO)} y el ${fmtFechaISO(hastaISO)} (${dias} días) egresaron <b>${m.totalEgresos}</b> pacientes${cur.ocupProm!==null?`, con una ocupación promedio de <b>${cur.ocupProm}%</b>`:''}${cur.estMed!==null?` y una estadía mediana de <b>${cur.estMed} días</b>`:''}.`);
+  const topDiag = Object.entries(m.diagCounts).sort((a,b)=>b[1]-a[1]);
+  const totDiag = topDiag.reduce((a,x)=>a+x[1],0);
+  if(topDiag.length) frases.push(`El diagnóstico más frecuente fue <b>${E(topDiag[0][0])}</b> (${topDiag[0][1]}); los oportunistas representaron el <b>${totDiag?Math.round(m.opPeriodoSi/totDiag*100):0}%</b> de los diagnósticos.`);
+  const nMot = k => Object.entries(m.motivos).filter(([mot])=>mot===k).reduce((a,x)=>a+x[1],0);
+  const nAlta = nMot('Alta médica'), nFuga = nMot('Fuga / contra opinión médica'), nUTI = nMot('Pase a UTI'), nObito = nMot('Óbito');
+  if(m.totalEgresos) frases.push(`El <b>${Math.round(nAlta/m.totalEgresos*100)}%</b> egresó de alta médica; hubo ${nFuga} fuga(s) (${m.pctFugas}%), ${nUTI} pase(s) a UTI (${m.pctUTI}%) y ${nObito} óbito(s).`);
+  const pacInterc = new Set(m.intercurrEnRango.map(ic=>ic.dni)).size;
+  if(m.intercurrEnRango.length){
+    const cnt = {}; m.intercurrEnRango.forEach(ic=>{ const t=(ic.tipo||'').replace(' (RAM)',''); cnt[t]=(cnt[t]||0)+1; });
+    const topI = Object.entries(cnt).sort((a,b)=>b[1]-a[1])[0];
+    frases.push(`Se registraron <b>${m.intercurrEnRango.length}</b> intercurrencias no infecciosas en ${pacInterc} paciente(s); la más frecuente fue ${E(topI[0])}.`);
+  }
+  if(m.topIIH.length) frases.push(`Se registraron infecciones intrahospitalarias: la más frecuente fue <b>${E(m.topIIH[0][0])}</b> (${m.topIIH[0][1]}).`);
+
+  // ----- Alertas -----
+  const alertas = [];
+  if(m.totalEgresos>0 && m.totalEgresos<5) alertas.push('Pocos egresos en el período: interpretar los porcentajes con cautela.');
+  if(cur.ocupProm!==null && cur.ocupProm>95) alertas.push(`Ocupación promedio muy alta (${cur.ocupProm}%): poco margen de camas disponibles.`);
+  if(cur.ocupProm!==null && cur.ocupProm<60) alertas.push(`Ocupación promedio baja (${cur.ocupProm}%).`);
+  if(m.pctFugas>=10) alertas.push(`Fugas / contra opinión médica: ${m.pctFugas}% de los egresos.`);
+  else if(hayPrev && m.pctFugas-p.pctFugas>=5) alertas.push(`Aumento de fugas: ${p.pctFugas}% → ${m.pctFugas}%.`);
+  if(m.pctUTI>=15) alertas.push(`Pases a UTI: ${m.pctUTI}% de los egresos.`);
+  if(m.mortalidad>=10) alertas.push(`Mortalidad del ${m.mortalidad}% de los pacientes del período.`);
+  const pacIIH = m.episodios.filter(h=>h.infeccionesIH).length;
+  if(m.totalCaract && pacIIH/m.totalCaract>=0.1) alertas.push(`Infecciones intrahospitalarias en ${Math.round(pacIIH/m.totalCaract*100)}% de los pacientes.`);
+  if(m.totalCaract && m.cantReinternacion/m.totalCaract>=0.3) alertas.push(`Reinternaciones en ${Math.round(m.cantReinternacion/m.totalCaract*100)}% de los ingresos.`);
+  if(m.noEvaluados>0) alertas.push(`${m.noEvaluados} paciente(s) egresaron sin ser evaluados.`);
+
+  const kpi = (valor, label, delta) => `<div style="background:#F1EFE8; border-radius:6px; padding:8px 6px; text-align:center;"><div style="font-size:22px; font-weight:800; color:#0F6E56;">${valor}</div><div style="font-size:11px; color:#52514e;">${label}</div><div style="font-size:10.5px; margin-top:2px;">${delta}</div></div>`;
+  const h3 = (t) => `<h3 style="font-size:13px; color:#0F6E56; text-transform:uppercase; letter-spacing:.3px; margin:12px 0 4px; border-bottom:1px solid #D3D1C7; padding-bottom:2px; page-break-after:avoid; break-after:avoid;">${t}</h3>`;
+  const lectura = t => `<p style="font-size:11.5px; color:#2C2C2A; margin:6px 0 0; padding-top:5px; border-top:1px dashed #C9C7BC;">${t}</p>`;
+  const caja = (id, titulo) => `${titulo ? '<div style="font-size:10.5px; font-weight:700; color:#52514e; text-transform:uppercase; letter-spacing:.3px; margin:0 0 3px;">'+titulo+'</div>' : ''}<div id="${id}" style="background:#FAF9F6; border:1px solid #E1E0D9; border-radius:5px; padding:6px 8px; margin:0 0 6px;"></div>`;
+  const sec = (n, titulo, body) => `<div style="border:1px solid #C9C7BC; border-radius:8px; margin:0 0 10px; overflow:hidden; page-break-inside:avoid; break-inside:avoid;">
+      <div style="background:#E1F5EE; color:#085041; font-size:12.5px; font-weight:800; text-transform:uppercase; letter-spacing:.3px; padding:4px 10px; border-bottom:1px solid #C9C7BC;">${n}. ${titulo}</div>
+      <div style="padding:8px 10px 8px;">${body}</div></div>`;
+
+  // ----- Lecturas por sección -----
+  const edadMax = [...m.edadRangoCountsPeriodo].sort((a,b)=>b[1]-a[1])[0];
+  const lecturaPerfil = `${edadMax && edadMax[1] ? 'El rango de edad más frecuente fue '+edadMax[0]+' ('+edadMax[1]+' pacientes). ' : ''}Primera internación: ${m.cantPrimeraVez}; reinternaciones: ${m.cantReinternacion}. Situación de calle: ${m.pctCalle}%.${m.topNacionalidad.length ? ' Nacionalidad más frecuente: '+E(m.topNacionalidad[0][0])+' ('+m.topNacionalidad[0][1]+').' : ''}${m.promCD4!==null ? ' CD4 promedio: '+m.promCD4+'.' : ''}`;
+  const tbTxt = m.pacientesTBPeriodo.length ? ` Pacientes con tuberculosis/micobacteriosis: <b>${m.pacientesTBPeriodo.length}</b> (${m.tbEmpiricoPeriodo} empírico, ${m.tbDirigidoPeriodo} dirigido${m.tbMicobacteriaAtipicaPeriodo?'; '+m.tbMicobacteriaAtipicaPeriodo+' atípica(s)':''}).` : '';
+  const lecturaDiag = topDiag.length ? `Oportunistas: ${m.opPeriodoSi}; no oportunistas: ${m.opPeriodoNo}. Más frecuentes: ${textoLista(topDiag.slice(0,3).map(([c,n])=>E(c)+' ('+n+')'))}.${tbTxt}` : 'Sin diagnósticos registrados en el período.';
+  const lecturaIIH = m.topIIH.length ? `Tipos de IIH más frecuentes: ${textoLista(m.topIIH.slice(0,3).map(([c,n])=>E(c)+' ('+n+')'))}.${m.topGermenes.length?' Gérmenes aislados más frecuentes: '+textoLista(m.topGermenes.slice(0,3).map(([c,n])=>E(c)+' ('+n+')'))+'.':''}` : 'No se registraron infecciones intrahospitalarias en el período.';
+  const lecturaInterc = m.intercurrEnRango.length ? `${m.intercurrEnRango.length} intercurrencia(s) en ${pacInterc} paciente(s) (${m.totalCaract?Math.round(pacInterc/m.totalCaract*100):0}% de los pacientes del período).` : 'No se registraron intercurrencias no infecciosas en el período.';
+  const lecturaDes = `${m.utiFallecidos+m.utiVive+m.utiPendiente ? 'De '+(m.utiFallecidos+m.utiVive+m.utiPendiente)+' pase(s) a UTI: '+m.utiFallecidos+' falleció(eron) en UTI, '+m.utiVive+' vive(n) sin retorno a sala y '+m.utiPendiente+' sin desenlace confirmado. ' : 'No hubo pases a UTI. '}Mortalidad del período: ${m.mortalidad}%.`;
+
+  const titulo = `<div style="display:flex; justify-content:space-between; align-items:flex-end; border-bottom:2px solid #0F6E56; padding-bottom:6px; margin-bottom:10px;">
+      <div><div style="font-size:19px; font-weight:800; color:#0F6E56; letter-spacing:.4px;">SALA 11 — INFORME DEL PERÍODO</div><div style="font-size:11.5px; color:#52514e;">Sala de internación VIH · Hospital Muñiz</div></div>
+      <div style="text-align:right; font-size:11.5px; color:#2C2C2A;"><b>${fmtFechaISO(desdeISO)} al ${fmtFechaISO(hastaISO)}</b><br><span style="color:#898781;">Emitido el ${new Date().toLocaleDateString('es-AR')}</span></div></div>`;
+
+  const comparativo = hayPrev ? `<p style="font-size:10.5px; color:#898781; margin:4px 0 0;">Comparado con el período anterior de igual duración (${fmtFechaISO(prevDesde)} al ${fmtFechaISO(prevHasta)}).</p>` : `<p style="font-size:10.5px; color:#898781; margin:4px 0 0;">No hubo egresos en el período anterior de igual duración (${fmtFechaISO(prevDesde)} al ${fmtFechaISO(prevHasta)}), por eso no hay comparación.</p>`;
+  const pg1 = `${titulo}
+    <div style="display:grid; grid-template-columns:repeat(5,1fr); gap:6px;">
+      ${kpi(m.totalEgresos,'Egresos', flechaDelta(m.totalEgresos, hayPrev?p.totalEgresos:null,'',null))}
+      ${kpi(cur.ocupProm===null?'—':cur.ocupProm+'%','Ocupación promedio', flechaDelta(cur.ocupProm, hayPrev?prev.ocupProm:null,' pts',null))}
+      ${kpi(cur.estMed===null?'—':cur.estMed+' d','Estadía mediana', flechaDelta(cur.estMed, hayPrev?prev.estMed:null,' d',null))}
+      ${kpi(m.pctFugas+'%','Fugas', flechaDelta(m.pctFugas, hayPrev?p.pctFugas:null,' pts',true))}
+      ${kpi(m.pctUTI+'%','Pases a UTI', flechaDelta(m.pctUTI, hayPrev?p.pctUTI:null,' pts',true))}
+    </div>${comparativo}
+    ${h3('Lo más importante del período')}
+    ${sinDatos ? '<p style="font-size:12px;">No hay datos cargados en este período.</p>' : '<ul style="margin:4px 0 0; padding-left:18px; font-size:12px; line-height:1.5;">'+frases.map(f=>'<li>'+f+'</li>').join('')+'</ul>'}
+    ${h3('Alertas')}
+    ${alertas.length ? '<ul style="margin:4px 0 0; padding-left:18px; font-size:12px; line-height:1.5; color:#8A2A1B;">'+alertas.map(a=>'<li>'+a+'</li>').join('')+'</ul>' : '<p style="font-size:12px; color:#0F6E56; margin:4px 0 0;">Sin alertas en el período.</p>'}
+    ${sec(1,'Actividad y ocupación', caja('infOcup','Ocupación de camas por día') + lectura((cur.oc && !cur.oc.vacio ? cur.oc.resumenTexto+'. ' : '') + 'Giro-cama del período: '+(m.totalEgresos/20).toFixed(2)+' egresos por cama.'))}`;
+
+  const pg2 = `<div>
+    ${sec(2,'Perfil de los pacientes', '<div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;"><div>'+caja('infEdad','Edad por rango')+'</div><div>'+caja('infReint','Primera vez vs. reinternación')+'</div></div>' + lectura(lecturaPerfil))}
+    ${sec(3,'Diagnósticos', caja('infDiag','Oportunistas vs. no oportunistas, por diagnóstico') + lectura(lecturaDiag))}
+    ${sec(4,'Infecciones intrahospitalarias', (m.topIIH.length ? caja('infIIH','Infecciones por tipo') : '') + lectura(lecturaIIH))}
+  </div>`;
+  const pg3 = `<div>
+    ${sec(5,'Intercurrencias no infecciosas', caja('infInterc','Intercurrencias por tipo') + (m.intercurrEnRango.some(ic=>ic.tipo==='Reacción adversa medicamentosa (RAM)') ? caja('infRAM','RAM por fármaco implicado') : '') + lectura(lecturaInterc))}
+    ${m.intercurrEnRango.length ? sec('5b','Días de internación: con vs. sin intercurrencias', caja('infEstadia','Mediana y rango intercuartílico')+'<div id="infEstadiaDet"></div>') : ''}
+    ${sec(6,'Desenlaces', caja('infMotivos','Motivos de egreso') + lectura(lecturaDes))}
+    <div style="display:flex; justify-content:space-between; margin-top:40px; font-size:11px; color:#52514e;"><span style="border-top:1px solid #898781; padding-top:3px; width:42%; text-align:center;">Elaboró</span><span style="border-top:1px solid #898781; padding-top:3px; width:42%; text-align:center;">Jefe de servicio</span></div>
+    <p style="font-size:9.5px; color:#898781; margin:10px 0 0;">Informe generado automáticamente a partir de los datos cargados en la herramienta Sala 11. Las asociaciones mostradas no implican causalidad.</p>
+  </div>`;
+  return { html: pg1+pg2+pg3, cur, m, desdeISO, hastaISO };
+}
+function dibujarGraficosInforme(info){
+  const m = info.m, cur = info.cur;
+  if(cur.oc && !cur.oc.vacio) renderOcupacionDiariaChart('infOcup', cur.oc); else document.getElementById('infOcup').innerHTML = '<p style="font-size:11.5px; color:#898781;">Sin datos de ocupación.</p>';
+  renderColumnChart('infEdad', m.edadRangoCountsPeriodo, '#6250d6');
+  renderStackedBar('infReint', [{label:'Primera vez', count:m.cantPrimeraVez, color:'#2a78d6'},{label:'Reinternación', count:m.cantReinternacion, color:'#eb6834'}]);
+  renderDiagnosticosAgrupados('infDiag', m.diagCounts, {compacto:true});
+  if(document.getElementById('infIIH')) renderBarChart('infIIH', m.topIIH, '#A32D2D');
+  renderIntercurrenciasAgrupadas('infInterc', m.intercurrEnRango, m.totalCaract, {compacto:true});
+  if(document.getElementById('infRAM')) renderRAMPorFarmaco('infRAM', m.intercurrEnRango, {compacto:true});
+  if(document.getElementById('infEstadia')) renderEstadiaIntercurrencias('infEstadia', 'infEstadiaDet', m.episodiosEgresados, intercurrenciasLog);
+  const colMotivo = {'Alta médica':'#2a78d6','Pase a UTI':'#eda100','Fuga / contra opinión médica':'#eb6834','Óbito':'#e34948','Pase a otra sala':'#1baf7a','Derivación a otro centro':'#6250d6'};
+  renderStackedBar('infMotivos', Object.entries(m.motivos).sort((a,b)=>b[1]-a[1]).map(([k,n])=>({label:k, count:n, color:colMotivo[k]||'#898781'})));
+}
+let informeVolviendoDeImprimir = false;
+function abrirInformePeriodo(){
+  const desdeISO = document.getElementById('repDesde').value, hastaISO = document.getElementById('repHasta').value;
+  if(!desdeISO || !hastaISO){ alert('Elegí las fechas "Desde" y "Hasta" para armar el informe del período.'); return; }
+  if(desdeISO > hastaISO){ alert('La fecha "Desde" no puede ser posterior a "Hasta".'); return; }
+  const info = generarInformeHTML(desdeISO, hastaISO);
+  renderReportes(); // restaura la vista de Reportes (las métricas del informe usaron fechas temporales)
+  document.getElementById('informePrintSheet').innerHTML = info.html;
+  document.getElementById('reportesOverlay').classList.remove('show');
+  document.getElementById('informeOverlay').classList.add('show');
+  dibujarGraficosInforme(info);
+  ajustarHojaA4('informeModal');
+}
+function cerrarInformePeriodo(){
+  document.getElementById('informeOverlay').classList.remove('show');
+  document.getElementById('reportesOverlay').classList.add('show');
+}
+function imprimirInformePeriodo(){
+  informeVolviendoDeImprimir = true;
+  document.body.classList.add('print-mode');
+  window.print();
+}
+
 function closeReportes(){ document.getElementById('reportesOverlay').classList.remove('show'); }
 
 function armarEntradaHistorial(patient, id, fecha, motivo){
@@ -4004,7 +4399,7 @@ function renderOcupacionDiariaChart(containerId, oc){
   el.innerHTML = '<div style="overflow-x:auto;"><svg width="'+w+'" height="'+h+'" viewBox="0 0 '+w+' '+h+'" style="display:block;">'+grid+bars+'</svg></div>';
 }
 
-function renderReportes(){
+function renderReportes(opts){
   const desdeISO = document.getElementById('repDesde').value;
   const hastaISO = document.getElementById('repHasta').value;
   const desde = desdeISO ? new Date(desdeISO+'T00:00:00') : null;
@@ -4188,7 +4583,6 @@ function renderReportes(){
   episodios.forEach(h=>{ if(h.diagnosticoVIH){ transmisionPeriodo[h.diagnosticoVIH] = (transmisionPeriodo[h.diagnosticoVIH]||0)+1; } });
 
   // Oportunistas vs no oportunistas (un diagnóstico con nombre fijo de la lista es oportunista; "No oportunista" y sus especificaciones, no)
-  const IO_NOMBRES = DIAG_OPCIONES.filter(op=>op!=='No oportunista (otra causa)').concat(['Tuberculosis','Micobacteria atípica']);
   function contarOportunistas(diagCountsObj){
     let oportunistas=0, noOportunistas=0;
     Object.entries(diagCountsObj).forEach(([cat,count])=>{
@@ -4311,11 +4705,9 @@ function renderReportes(){
     const dias = Math.round((fin-ini)/86400000);
     if(dias < 0) return;
     const cat = d.categoria||'(sin especificar)';
-    duracionPorDiag[cat] = duracionPorDiag[cat] || {suma:0, n:0};
-    duracionPorDiag[cat].suma += dias;
-    duracionPorDiag[cat].n++;
+    duracionPorDiag[cat] = duracionPorDiag[cat] || [];
+    duracionPorDiag[cat].push(dias);
   });
-  const promDuracionPorDiag = Object.entries(duracionPorDiag).map(([cat,v])=>[cat, Math.round((v.suma/v.n)*10)/10]).sort((a,b)=>b[1]-a[1]);
 
   // Desenlace de los pases a UTI del período. OJO: si el paciente volvió a Sala 11, ese episodio se
   // fusiona con el actual y esta fila de "Pase a UTI" deja de existir — por eso acá NO se puede
@@ -4331,6 +4723,13 @@ function renderReportes(){
   }).length;
   const utiPendiente = pasesUTIPeriodo.length - utiFallecidos - utiVive;
 
+  if(opts && opts.soloMetricas){
+    // Uso interno del informe: devuelve los números calculados sin dibujar nada.
+    return { desde, hasta, episodiosEgresados, episodios, totalEgresos, totalCaract, estadias, motivos, diagCounts, intercurrEnRango,
+      topIIH, topGermenes, pctFugas, pctUTI, mortalidad, edadRangoCountsPeriodo, cantPrimeraVez, cantReinternacion, pctCalle,
+      promCD4, promIOs, topNacionalidad, pctAlergias, pctInicioReinicioTARV, pacientesTBPeriodo, tbEmpiricoPeriodo, tbDirigidoPeriodo,
+      tbMicobacteriaAtipicaPeriodo, opPeriodoSi, opPeriodoNo, utiFallecidos, utiVive, utiPendiente, noEvaluados, internadosPeriodo };
+  }
   const elegidas = getSeccionesElegidas();
   const incluye = key => elegidas.includes(key);
   const ocupDiaria = incluye('ocupacionDiaria') ? computeOcupacionDiaria(desde, hasta) : null;
@@ -4446,7 +4845,15 @@ function renderReportes(){
     ${incluye('intercurrenciasPeriodo') ? `
     <h3 style="font-size:16.5px; color:var(--teal-dark); margin-bottom:2px;">INTERCURRENCIAS NO INFECCIOSAS (EGRESOS + INTERNADOS)</h3>
     <p class="sub-h" style="margin-bottom:6px;">RAM, sangrados y otras — no cuentan como diagnóstico infectológico.</p>
-    <div id="chartIntercurrencias" style="margin-bottom:22px;"></div>` : ''}
+    <div id="chartIntercurrencias" style="margin-bottom:14px;"></div>
+    <h4 style="font-size:14.5px; color:var(--teal-dark); margin:6px 0 4px;">Detalle de RAM por fármaco implicado</h4>
+    <div id="chartRAMFarmaco" style="margin-bottom:22px;"></div>` : ''}
+
+    ${incluye('estadiaIntercurrencias') ? `
+    <h3 style="font-size:16.5px; color:var(--teal-dark); margin-bottom:2px;">DÍAS DE INTERNACIÓN: CON VS. SIN INTERCURRENCIAS</h3>
+    <p class="sub-h" style="margin-bottom:8px;">Egresados del período.</p>
+    <div id="chartEstadiaInterc"></div>
+    <div id="chartEstadiaIntercDetalle" style="margin-bottom:22px;"></div>` : ''}
 
     ${incluye('medicos') ? `
     <h3 style="font-size:16.5px; color:var(--teal-dark); margin-bottom:10px;">GIRO-CAMA POR MÉDICO</h3>
@@ -4538,29 +4945,36 @@ function renderReportes(){
       renderSitioTBChart('chartTBSitioPeriodo', topTBSitioPeriodo, pacientesTBPeriodo.length);
       renderPercentBars('chartTBDiseminadaPeriodo', [{label:'TB diseminada (>2 sitios)', pct:pctTBDiseminadaPeriodo, color:'#C0392B'}]);
     }
-    if(incluye('indicadoresClave')) renderPercentBars('chartIndicadores', [
-      {label:'Fugas / contra opinión médica', pct:pctFugas, color:'#9A2E22'},
-      {label:'Pase a UTI', pct:pctUTI, color:'#6E4FA0'}
+    if(incluye('indicadoresClave')) renderTarjetas('chartIndicadores', [
+      {valor:pctFugas+'%', label:'Fugas / contra opinión médica', color:'#eb6834'},
+      {valor:pctUTI+'%', label:'Pases a UTI', color:'#eda100'}
     ]);
     if(incluye('frecuenciaIIH')) renderBarChart('chartFrecuenciaIIH', topIIH, '#C0392B');
     if(incluye('prevalenciaGermenes')) renderBarChart('chartPrevalenciaGermenes', topGermenes, '#9A2E22');
-    if(incluye('motivos')) renderDonutChart('chartMotivos', motivos);
-    if(incluye('diagnosticos')) renderBarChart('chartDiagnosticos', topDiag, '#0B5E59');
-    if(incluye('intercurrenciasPeriodo')) renderBarChart('chartIntercurrencias', topIntercurrencias, '#6E4FA0');
+    if(incluye('motivos')){
+      const colMotivo = {'Alta médica':'#2a78d6','Pase a UTI':'#eda100','Fuga / contra opinión médica':'#eb6834','Óbito':'#e34948','Pase a otra sala':'#1baf7a','Derivación a otro centro':'#6250d6'};
+      renderStackedBar('chartMotivos', Object.entries(motivos).sort((a,b)=>b[1]-a[1]).map(([m,n])=>({label:m, count:n, color:colMotivo[m]||'#898781'})));
+    }
+    if(incluye('diagnosticos')) renderDiagnosticosAgrupados('chartDiagnosticos', diagCounts);
+    if(incluye('intercurrenciasPeriodo')){
+      renderIntercurrenciasAgrupadas('chartIntercurrencias', intercurrEnRango, totalCaract);
+      renderRAMPorFarmaco('chartRAMFarmaco', intercurrEnRango);
+    }
+    if(incluye('estadiaIntercurrencias')) renderEstadiaIntercurrencias('chartEstadiaInterc', 'chartEstadiaIntercDetalle', episodiosEgresados, intercurrenciasLog);
     if(incluye('medicos')) renderBarChart('chartMedicos', topMedicos, '#2563AF');
-    if(incluye('reinternacionPeriodo')) renderDonutChart('chartReinternacion', {'Primera vez': cantPrimeraVez, 'Reinternación': cantReinternacion}, {'Primera vez':'#2E7D5B', 'Reinternación':'#C0392B'});
-    if(incluye('tarvPeriodo')) renderPercentBars('chartTARVInicioPct', [{label:'Inició o reinició TARV durante la internación', pct:pctInicioReinicioTARV, color:'#0B5E59'}]);
+    if(incluye('reinternacionPeriodo')) renderStackedBar('chartReinternacion', [{label:'Primera vez', count:cantPrimeraVez, color:'#2a78d6'},{label:'Reinternación', count:cantReinternacion, color:'#eb6834'}]);
+    if(incluye('tarvPeriodo')) renderStackedBar('chartTARVInicioPct', [{label:'Inició o reinició TARV durante la internación', count:pctInicioReinicioTARV, color:'#2a78d6'},{label:'No', count:Math.max(0,100-pctInicioReinicioTARV), color:'#898781'}]);
     if(incluye('alergiasPeriodo')){
-      renderPercentBars('chartAlergiasPct', [{label:'Con alguna alergia registrada', pct:pctAlergias, color:'#AD1457'}]);
+      renderStackedBar('chartAlergiasPct', [{label:'Con alguna alergia registrada', count:pctAlergias, color:'#e34948'},{label:'Sin alergias', count:Math.max(0,100-pctAlergias), color:'#898781'}]);
       if(Object.keys(tipoReaccionCounts).length) renderDonutChart('chartAlergiasTipo', tipoReaccionCounts);
     }
     if(incluye('nacionalidadPeriodo')) renderBarChart('chartNacionalidad', topNacionalidad, '#2563AF');
     if(incluye('vdrlInterpretacionPeriodo')) renderDonutChart('chartVDRLInterpretacion', vdrlInterpretacionCounts);
     if(incluye('tbPreviaPeriodo')){
-      renderPercentBars('chartTBPreviaPct', [{label:'Con antecedente de TB previa', pct:pctTBPrevia, color:'#B9821D'}]);
+      renderStackedBar('chartTBPreviaPct', [{label:'Con antecedente de TB previa', count:pctTBPrevia, color:'#eda100'},{label:'Sin TB previa', count:Math.max(0,100-pctTBPrevia), color:'#898781'}]);
       if(conTBPrevia.length) renderStackedBar('chartTBPreviaTratamiento', [{label:'Completó tratamiento previo', count:tbPreviaCompletoCount, color:'#0B5E59'},{label:'No completó / abandonó', count:tbPreviaAbandonoCount, color:'#C0392B'}]);
     }
-    if(incluye('duracionTratamientoPeriodo')) renderBarChart('chartDuracionTratamiento', promDuracionPorDiag, '#6E4FA0');
+    if(incluye('duracionTratamientoPeriodo')) renderRangoTratamiento('chartDuracionTratamiento', duracionPorDiag);
     if(incluye('desenlaceUTIPeriodo')) renderStackedBar('chartDesenlaceUTI', [{label:'Falleció en UTI', count:utiFallecidos, color:'#C0392B'},{label:'Vive (sin retorno a Sala 11)', count:utiVive, color:'#2E7D5B'},{label:'Sin desenlace confirmado', count:utiPendiente, color:'#9AA5AD'}]);
     if(incluye('ocupacionDiaria')) renderOcupacionDiariaChart('chartOcupacionDiaria', ocupDiaria);
     if(incluye('tendenciaOcupacion')){
