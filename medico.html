@@ -648,6 +648,21 @@ let eventos = []; // {id, titulo, fecha, tipo} — cumpleaños/vacaciones/congre
 let conflictivos = []; // {dni, nombre, motivo, fecha} — pacientes marcados por conducta conflictiva
 let clinicoRetroInfo = null; // {dni, cama, egreso, nombre} cuando se está completando datos clínicos de un egreso ya cerrado
 let desenlacesUTI = []; // {dni, cama, egreso, desenlace, fecha} — desenlace final confirmado tras un "Pase a UTI"
+// Desenlace de un pase a UTI: gana el último registro cargado (la planilla es append-only). Compara como texto.
+function desenlaceDe(h){
+  let r = null;
+  desenlacesUTI.forEach(d=>{ if(String(d.dni)===String(h.dni) && String(d.cama)===String(h.cama) && String(d.egreso)===String(h.egreso)) r = d; });
+  return r;
+}
+// 'pendiente' (sin registro) | 'sigue' (aún en UTI) | 'fallecio' | 'vive' (vivo sin retorno a Sala 11; incluye "Vivo"/"Vive" de versiones anteriores)
+function catDesenlace(d){
+  if(!d) return 'pendiente';
+  const t = String(d.desenlace||'');
+  if(/falleci/i.test(t)) return 'fallecio';
+  if(/sigue/i.test(t)) return 'sigue';
+  return 'vive';
+}
+const DESENLACES_UTI_OPCIONES = ['Sigue en UTI','Pasó a otra sala del hospital','Derivado a otro centro','Alta desde UTI','Falleció en UTI'];
 let pendingDesenlaceUTIAppends = []; // desenlaces nuevos todavía no confirmados en la planilla
 const CONFLICTIVO_OPCIONES = [
   'Robo de pertenencias','Disturbios con otro/s paciente/s','Agresión verbal a personal sanitario',
@@ -974,7 +989,7 @@ function closeConflictoPopup(){ document.getElementById('conflictoOverlay').clas
 function buscarUTIPendiente(dni){
   // Busca el "Pase a UTI" más reciente de este DNI que no haya sido ya fusionado,
   // y que no tenga un desenlace de fallecido confirmado (si falleció, no puede "volver").
-  const fallecidos = new Set(desenlacesUTI.filter(d=>d.desenlace==='Falleció').map(d=>d.dni+'|'+d.cama+'|'+d.egreso));
+  const fallecidos = new Set(desenlacesUTI.filter(d=>catDesenlace(d)==='fallecio').map(d=>d.dni+'|'+d.cama+'|'+d.egreso));
   const candidatos = historial.filter(h => h.dni===dni && h.motivoEgreso==='Pase a UTI' && !fallecidos.has(h.dni+'|'+h.cama+'|'+h.egreso));
   if(!candidatos.length) return null;
   candidatos.sort((a,b)=> (parseEsAr(b.egreso)||0) - (parseEsAr(a.egreso)||0));
@@ -3610,12 +3625,15 @@ function renderBusquedaResultado(dni){
       : '';
     let utiHtml = '';
     if(ep.motivoEgreso==='Pase a UTI'){
-      const desenlace = desenlacesUTI.find(d=>d.dni===ep.dni && d.cama===ep.cama && d.egreso===ep.egreso);
+      const desenlace = desenlaceDe(ep);
+      const cat = catDesenlace(desenlace);
       if(desenlace){
-        const color = desenlace.desenlace==='Falleció en UTI' ? 'var(--rot-bd)' : 'var(--libre-bd)';
-        utiHtml = `<div style="font-size:12.5px; font-weight:700; color:${color}; margin-top:4px;">→ ${desenlace.desenlace} (actualizado ${desenlace.fecha})</div>`;
-      } else {
-        utiHtml = `<button type="button" class="btn ghost" style="width:100%; margin-top:8px; font-size:13px; padding:7px;" onclick="startDesenlaceUTI('${ep.dni}','${ep.cama}','${ep.egreso}')">Actualizar desenlace en UTI</button>
+        const color = cat==='fallecio' ? 'var(--rot-bd)' : (cat==='sigue' ? 'var(--aisl-bd)' : 'var(--libre-bd)');
+        const txt = /^viv[oe]$/i.test(String(desenlace.desenlace).trim()) ? 'Vivo (sin retorno a Sala 11)' : desenlace.desenlace;
+        utiHtml = `<div style="font-size:12.5px; font-weight:700; color:${color}; margin-top:4px;">→ ${txt} (actualizado ${desenlace.fecha})</div>`;
+      }
+      if(!desenlace || cat==='sigue'){
+        utiHtml += `<button type="button" class="btn ghost" style="width:100%; margin-top:8px; font-size:13px; padding:7px;" onclick="startDesenlaceUTI('${ep.dni}','${ep.cama}','${ep.egreso}', ${idx})">Actualizar desenlace en UTI</button>
                    <div id="desenlaceFormWrap_${idx}"></div>`;
       }
     }
@@ -3666,16 +3684,13 @@ function confirmMarcarConflictivo(dni, nombre){
 }
 
 /* ---------- Desenlace final tras "Pase a UTI" ---------- */
-function startDesenlaceUTI(dni, cama, egreso){
-  const episodios = historial.filter(h=>h.dni===dni);
-  const i = episodios.findIndex(h=>h.cama===cama && h.egreso===egreso);
+function startDesenlaceUTI(dni, cama, egreso, i){
   const wrap = document.getElementById('desenlaceFormWrap_'+i);
   if(!wrap) return;
   wrap.innerHTML = `
     <div class="field" style="margin-top:8px;"><label>Desenlace final en UTI</label>
       <select id="fDesenlaceUTI_${i}">
-        <option value="Vivo">Vivo / dado de alta de UTI</option>
-        <option value="Falleció en UTI">Falleció en UTI</option>
+        ${DESENLACES_UTI_OPCIONES.map(o=>`<option value="${o}">${o}</option>`).join('')}
       </select>
     </div>
     <button type="button" class="btn" style="width:100%;" onclick="confirmDesenlaceUTI('${dni}','${cama}','${egreso}', ${i})">Confirmar</button>
@@ -3686,8 +3701,10 @@ function confirmDesenlaceUTI(dni, cama, egreso, i){
   const entry = { dni, cama, egreso, desenlace, fecha: new Date().toLocaleDateString('es-AR') };
   desenlacesUTI.push(entry);
   pendingDesenlaceUTIAppends.push(entry);
-  notas = notas.filter(n => !(n.tipo==='uti' && n.dni===dni && n.cama===cama && n.egreso===egreso));
-  renderNotas();
+  if(desenlace !== 'Sigue en UTI'){
+    notas = notas.filter(n => !(n.tipo==='uti' && n.dni===dni && n.cama===cama && n.egreso===egreso));
+    renderNotas();
+  }
   saveState();
   renderBusquedaResultado(dni);
 }
@@ -4145,7 +4162,7 @@ function generarInformeHTML(desdeISO, hastaISO){
   const lecturaDiag = topDiag.length ? `Oportunistas: ${m.opPeriodoSi}; no oportunistas: ${m.opPeriodoNo}. Más frecuentes: ${textoLista(topDiag.slice(0,3).map(([c,n])=>E(c)+' ('+n+')'))}.${tbTxt}` : 'Sin diagnósticos registrados en el período.';
   const lecturaIIH = m.topIIH.length ? `Tipos de IIH más frecuentes: ${textoLista(m.topIIH.slice(0,3).map(([c,n])=>E(c)+' ('+n+')'))}.${m.topGermenes.length?' Gérmenes aislados más frecuentes: '+textoLista(m.topGermenes.slice(0,3).map(([c,n])=>E(c)+' ('+n+')'))+'.':''}` : 'No se registraron infecciones intrahospitalarias en el período.';
   const lecturaInterc = m.intercurrEnRango.length ? `${m.intercurrEnRango.length} intercurrencia(s) en ${pacInterc} paciente(s) (${m.totalCaract?Math.round(pacInterc/m.totalCaract*100):0}% de los pacientes del período).` : 'No se registraron intercurrencias no infecciosas en el período.';
-  const lecturaDes = `${m.utiFallecidos+m.utiVive+m.utiPendiente ? 'De '+(m.utiFallecidos+m.utiVive+m.utiPendiente)+' pase(s) a UTI: '+m.utiFallecidos+' falleció(eron) en UTI, '+m.utiVive+' vive(n) sin retorno a sala y '+m.utiPendiente+' sin desenlace confirmado. ' : 'No hubo pases a UTI. '}Mortalidad del período: ${m.mortalidad}%.`;
+  const lecturaDes = `${m.utiFallecidos+m.utiVive+m.utiPendiente ? 'De '+(m.utiFallecidos+m.utiVive+m.utiPendiente)+' pase(s) a UTI: '+m.utiFallecidos+' falleció(eron) en UTI, '+m.utiVive+' vive(n) sin retorno a sala'+(m.utiVive ? ' ('+Object.entries(m.utiDestinos).map(([t,n])=>n+' '+t.toLowerCase()).join(', ')+')' : '')+' y '+m.utiPendiente+' siguen en UTI o sin desenlace confirmado. ' : 'No hubo pases a UTI. '}Mortalidad del período: ${m.mortalidad}%.`;
 
   const titulo = `<div style="display:flex; justify-content:space-between; align-items:flex-end; border-bottom:2px solid #0F6E56; padding-bottom:6px; margin-bottom:10px;">
       <div><div style="font-size:19px; font-weight:800; color:#0F6E56; letter-spacing:.4px;">SALA 11 — INFORME DEL PERÍODO</div><div style="font-size:11.5px; color:#52514e;">Sala de internación VIH · Hospital Muñiz</div></div>
@@ -4549,13 +4566,12 @@ function renderReportes(opts){
     episodiosEgresados.filter(h=>{
       if(h.motivoEgreso==='Óbito') return true;
       if(h.motivoEgreso==='Pase a UTI'){
-        const d = desenlacesUTI.find(x=>x.dni===h.dni && x.cama===h.cama && x.egreso===h.egreso);
-        return d && d.desenlace==='Falleció en UTI';
+        return catDesenlace(desenlaceDe(h))==='fallecio';
       }
       return false;
     }).map(h=>h.dni)
   );
-  const utiSinConfirmar = episodiosEgresados.filter(h=>h.motivoEgreso==='Pase a UTI' && !desenlacesUTI.find(x=>x.dni===h.dni && x.cama===h.cama && x.egreso===h.egreso)).length;
+  const utiSinConfirmar = episodiosEgresados.filter(h=>h.motivoEgreso==='Pase a UTI' && ['pendiente','sigue'].includes(catDesenlace(desenlaceDe(h)))).length;
   const mortalidad = dniPeriodo.size ? Math.round((dniObito.size/dniPeriodo.size)*1000)/10 : 0;
 
   const germenCounts = {};
@@ -4780,14 +4796,15 @@ function renderReportes(opts){
   // fusiona con el actual y esta fila de "Pase a UTI" deja de existir — por eso acá NO se puede
   // contar "volvió a la sala", solo lo que sigue confirmado como desenlace final en UTI.
   const pasesUTIPeriodo = episodiosEgresados.filter(h=>h.motivoEgreso==='Pase a UTI');
-  const utiFallecidos = pasesUTIPeriodo.filter(h=>{
-    const d = desenlacesUTI.find(x=>x.dni===h.dni && x.cama===h.cama && x.egreso===h.egreso);
-    return d && d.desenlace==='Falleció en UTI';
-  }).length;
-  const utiVive = pasesUTIPeriodo.filter(h=>{
-    const d = desenlacesUTI.find(x=>x.dni===h.dni && x.cama===h.cama && x.egreso===h.egreso);
-    return d && d.desenlace==='Vive';
-  }).length;
+  const utiFallecidos = pasesUTIPeriodo.filter(h=>catDesenlace(desenlaceDe(h))==='fallecio').length;
+  const utiDestinos = {};
+  pasesUTIPeriodo.forEach(h=>{
+    const d = desenlaceDe(h);
+    if(catDesenlace(d)!=='vive') return;
+    const t = /^viv[oe]$/i.test(String(d.desenlace).trim()) ? 'Vivo (sin detalle)' : d.desenlace;
+    utiDestinos[t] = (utiDestinos[t]||0)+1;
+  });
+  const utiVive = Object.values(utiDestinos).reduce((a,b)=>a+b,0);
   const utiPendiente = pasesUTIPeriodo.length - utiFallecidos - utiVive;
 
   if(opts && opts.soloMetricas){
@@ -4795,7 +4812,7 @@ function renderReportes(opts){
     return { desde, hasta, episodiosEgresados, episodios, totalEgresos, totalCaract, estadias, motivos, diagCounts, intercurrEnRango,
       topIIH, topGermenes, pctFugas, pctUTI, mortalidad, edadRangoCountsPeriodo, cantPrimeraVez, cantReinternacion, pctCalle,
       promCD4, promIOs, topNacionalidad, pctAlergias, pctInicioReinicioTARV, pacientesTBPeriodo, tbEmpiricoPeriodo, tbDirigidoPeriodo,
-      tbMicobacteriaAtipicaPeriodo, opPeriodoSi, opPeriodoNo, utiFallecidos, utiVive, utiPendiente, noEvaluados, internadosPeriodo };
+      tbMicobacteriaAtipicaPeriodo, opPeriodoSi, opPeriodoNo, utiFallecidos, utiVive, utiPendiente, utiDestinos, noEvaluados, internadosPeriodo };
   }
   const elegidas = getSeccionesElegidas();
   const incluye = key => elegidas.includes(key);
@@ -5043,7 +5060,14 @@ function renderReportes(opts){
       if(conTBPrevia.length) renderStackedBar('chartTBPreviaTratamiento', [{label:'Completó tratamiento previo', count:tbPreviaCompletoCount, color:'#0B5E59'},{label:'No completó / abandonó', count:tbPreviaAbandonoCount, color:'#C0392B'}]);
     }
     if(incluye('duracionTratamientoPeriodo')) renderRangoTratamiento('chartDuracionTratamiento', duracionPorDiag);
-    if(incluye('desenlaceUTIPeriodo')) renderStackedBar('chartDesenlaceUTI', [{label:'Falleció en UTI', count:utiFallecidos, color:'#C0392B'},{label:'Vive (sin retorno a Sala 11)', count:utiVive, color:'#2E7D5B'},{label:'Sin desenlace confirmado', count:utiPendiente, color:'#9AA5AD'}]);
+    if(incluye('desenlaceUTIPeriodo')){
+      const COL_DEST = {'Pasó a otra sala del hospital':'#2E7D5B','Derivado a otro centro':'#3B8BD4','Alta desde UTI':'#6AA84F','Vivo (sin detalle)':'#8FBF9F'};
+      renderStackedBar('chartDesenlaceUTI', [
+        {label:'Falleció en UTI', count:utiFallecidos, color:'#C0392B'},
+        ...Object.entries(utiDestinos).map(([t,n])=>({label:t, count:n, color:COL_DEST[t]||'#2E7D5B'})),
+        {label:'Sigue en UTI / sin desenlace confirmado', count:utiPendiente, color:'#9AA5AD'}
+      ]);
+    }
     if(incluye('ocupacionDiaria')) renderOcupacionDiariaChart('chartOcupacionDiaria', ocupDiaria);
     if(incluye('tendenciaOcupacion')){
       const tendencia = computeOcupacionMensual(6);
