@@ -369,6 +369,10 @@
     </div>
   </header>
 
+  <div class="review-banner" id="otraPcBanner" style="display:none; background:#FFF4D6; border-color:#E0B300; color:#6B4E00;">
+    <span id="otraPcBannerText"></span>
+  </div>
+
   <div class="review-banner" id="offlineBanner" style="display:none; background:#FBE8E6; border-color:var(--rot-bd); color:var(--rot-tx);">
     <span id="offlineBannerText"></span>
     <button class="btn" onclick="manualSync()">Sincronizar ahora</button>
@@ -5196,6 +5200,85 @@ let lastKnownServerBeds = null; // foto de camas tal como estaban en el servidor
 let pendingMergeUTI = null; // {dni, cama, egreso} de un "Pase a UTI" a fusionar en el próximo guardado
 let lastKnownServerNotas = null; // ídem para notas
 let lastKnownServerEventos = null; // ídem para eventos
+/* ---------- Uso simultáneo desde otras computadoras ---------- */
+const SESION_ID = (()=>{ try{ let v = sessionStorage.getItem('sala11_sid'); if(!v){ v = Math.random().toString(36).slice(2,10)+Date.now().toString(36); sessionStorage.setItem('sala11_sid', v);} return v; }catch(e){ return Math.random().toString(36).slice(2,12); } })();
+function paramsSesion(){
+  let nom = '';
+  try{ const pl = JSON.parse(decodeURIComponent(escape(atob((googleIdToken||'').split('.')[1].replace(/-/g,'+').replace(/_/g,'/'))))); nom = pl.name || pl.email || ''; }catch(e){}
+  return '&sid=' + encodeURIComponent(SESION_ID) + '&nom=' + encodeURIComponent(nom);
+}
+function actualizarAvisoOtrasSesiones(lista){
+  const b = document.getElementById('otraPcBanner'); if(!b) return;
+  if(!Array.isArray(lista)) return; // el servidor no informa (script viejo): no tocar
+  if(!lista.length){ b.style.display = 'none'; return; }
+  const quienes = lista.map(x=>escInd(x.nombre||'otra persona')+' (desde las '+escInd(x.desde)+')').join(', ');
+  document.getElementById('otraPcBannerText').innerHTML = '⚠️ <b>Hay otra computadora usando la app ahora:</b> '+quienes+'. Esperá a ver "✓ Actualizado" antes de modificar una cama, y evitá editar la misma cama al mismo tiempo.';
+  b.style.display = 'flex';
+}
+function avisoBreve(txt){
+  const d = document.createElement('div');
+  d.style.cssText = 'position:fixed; left:50%; bottom:22px; transform:translateX(-50%); z-index:9700; background:#2C2C2A; color:#fff; padding:10px 16px; border-radius:10px; font-size:13.5px; max-width:90vw; box-shadow:0 4px 16px rgba(0,0,0,.3);';
+  d.textContent = txt; document.body.appendChild(d); setTimeout(()=>d.remove(), 6000);
+}
+// Fusión campo a campo de una cama: base = lo que sabíamos del servidor, mia = lo que tengo, fresca = lo que hay ahora en el servidor.
+// Devuelve la cama combinada con los conflictos resueltos a favor mío o de lo nuevo, y la lista de campos en conflicto.
+const ETIQ_CAMPOS = {indicaciones:'indicaciones', clinico:'ficha clínica', pendientes:'pendientes', evolucion:'evolución', status:'estado de la cama', patient:'datos del paciente'};
+function fusion3(b, m, f){
+  const J = JSON.stringify;
+  const ganaMia = {}, ganaNueva = {}, conf = [];
+  const keys = new Set([...Object.keys(b||{}), ...Object.keys(m||{}), ...Object.keys(f||{})]);
+  keys.forEach(k=>{
+    const bj=J((b||{})[k]), mj=J((m||{})[k]), fj=J((f||{})[k]);
+    let vM, vN;
+    if(mj===fj){ vM = vN = (m||{})[k]; }
+    else if(mj===bj){ vM = vN = (f||{})[k]; }
+    else if(fj===bj){ vM = vN = (m||{})[k]; }
+    else { conf.push(k); vM = (m||{})[k]; vN = (f||{})[k]; }
+    if(vM!==undefined) ganaMia[k] = vM;
+    if(vN!==undefined) ganaNueva[k] = vN;
+  });
+  return {ganaMia, ganaNueva, conf};
+}
+function fusionarCama(base, mia, fresca){
+  base = base || {status:'libre'}; mia = mia || {status:'libre'}; fresca = fresca || {status:'libre'};
+  const top = fusion3(base, mia, fresca);
+  const conflictos = top.conf.filter(k=>k!=='patient').map(k=>ETIQ_CAMPOS[k]||k);
+  let pMia = top.ganaMia.patient, pNueva = top.ganaNueva.patient;
+  if(top.conf.includes('patient')){
+    const bp=base.patient, mp=mia.patient, fp=fresca.patient;
+    const mismo = bp && mp && fp && String(bp.dni)===String(mp.dni) && String(mp.dni)===String(fp.dni);
+    if(mismo){
+      const sub = fusion3(bp, mp, fp);
+      pMia = sub.ganaMia; pNueva = sub.ganaNueva;
+      sub.conf.forEach(k=>conflictos.push(ETIQ_CAMPOS[k]||k));
+    } else {
+      conflictos.push('paciente de la cama');
+    }
+  }
+  const armar = (g,p)=>{ const o = Object.assign({}, g); if(p!==undefined) o.patient = p; else delete o.patient; return o; };
+  return { conMios: armar(top.ganaMia, pMia), conNuevo: armar(top.ganaNueva, pNueva), conflictos };
+}
+function preguntarConflictoGuardado(lista){
+  return new Promise(resolve=>{
+    const ov = document.createElement('div');
+    ov.style.cssText = 'position:fixed; inset:0; z-index:9800; background:rgba(0,0,0,.5); display:flex; align-items:center; justify-content:center; padding:20px;';
+    const items = lista.map(x=>'<li><b>Cama '+escInd(x.id)+'</b>'+(x.nombre?' · '+escInd(x.nombre):'')+': '+escInd(x.campos.join(', '))+'</li>').join('');
+    ov.innerHTML = `<div style="background:#fff; border-radius:14px; padding:22px 24px; max-width:460px; width:100%;">
+      <div style="font-size:30px;">⚠️</div>
+      <div style="font-weight:800; font-size:17px; margin:4px 0 6px;">Otra computadora modificó lo mismo que vos</div>
+      <div style="font-size:14px; color:#52514e; line-height:1.4;">Mientras editabas, se guardó una versión distinta de esta información:</div>
+      <ul style="font-size:14px; margin:8px 0 10px; padding-left:20px;">${items}</ul>
+      <div style="font-size:13px; color:#52514e; margin-bottom:12px;">Lo que cambió cada una en campos distintos ya se combinó solo. Elegí qué versión queda en lo que se superpone:</div>
+      <div style="display:flex; flex-direction:column; gap:8px;">
+        <button type="button" class="btn" id="cfMios">Guardar lo mío (reemplaza lo de la otra computadora)</button>
+        <button type="button" class="btn ghost" id="cfNuevo">Quedarme con lo de la otra computadora (descarto lo mío)</button>
+      </div></div>`;
+    document.body.appendChild(ov);
+    ov.querySelector('#cfMios').onclick = ()=>{ ov.remove(); resolve('mios'); };
+    ov.querySelector('#cfNuevo').onclick = ()=>{ ov.remove(); resolve('nuevo'); };
+  });
+}
+
 /* ---------- Velo de sincronización al abrir + indicador de actualización ---------- */
 let sincTimer = null;
 let ultimaSincOk = null;
@@ -5258,8 +5341,9 @@ async function loadState(){
   }
 
   try{
-    const res = await fetch(APPS_SCRIPT_URL + '?_=' + Date.now() + '&token=' + encodeURIComponent(googleIdToken||''), {cache:'no-store'});
+    const res = await fetch(APPS_SCRIPT_URL + '?_=' + Date.now() + '&token=' + encodeURIComponent(googleIdToken||'') + paramsSesion(), {cache:'no-store'});
     const data = await res.json();
+    actualizarAvisoOtrasSesiones(data.otrasSesiones);
     // SALVAGUARDA: si la planilla devolvió una foto sospechosamente vacía (por un hipo pasajero
     // de Google/la red), NO la tomamos como válida — mantenemos lo que ya teníamos (de la copia
     // local o de la memoria) y NO marcamos esto como "lectura confirmada", para que ningún
@@ -5367,20 +5451,39 @@ async function saveStateInterno(undoEgreso, completarClinico, mergeUTI){
   // en memoria (que puede estar vieja si esta pestaña quedó abierta mucho tiempo). Las camas
   // que sí cambiamos localmente se respetan tal cual, para que el guardado se aplique.
   try{
-    const resFresco = await fetch(APPS_SCRIPT_URL + '?_=' + Date.now() + '&token=' + encodeURIComponent(googleIdToken||'') + '&liviano=1', {cache:'no-store'});
+    const resFresco = await fetch(APPS_SCRIPT_URL + '?_=' + Date.now() + '&token=' + encodeURIComponent(googleIdToken||'') + '&liviano=1' + paramsSesion(), {cache:'no-store'});
     const fresco = await resFresco.json();
+    actualizarAvisoOtrasSesiones(fresco.otrasSesiones);
     // SALVAGUARDA: si la respuesta fresca viene sospechosamente vacía (menos de la mitad de las
     // camas esperadas), no confiamos en ella para "actualizar" camas que no tocamos — mejor
     // seguir con lo que había en memoria que arriesgarnos a vaciarlas por una respuesta rota.
     const fresco_confiable = fresco.beds && Object.keys(fresco.beds).length >= allIds.length / 2;
     if(fresco_confiable){
+      const conflictos = [];
+      const combinadas = [];
       allIds.forEach(id=>{
         const local = JSON.stringify(beds[id]);
         const conocido = JSON.stringify(lastKnownServerBeds[id]);
+        const nuevo = fresco.beds[id] || {status:'libre'};
         if(local === conocido){
-          beds[id] = fresco.beds[id] || {status:'libre'};
+          beds[id] = nuevo; // no la toqué: me quedo con lo del servidor
+        } else if(JSON.stringify(nuevo) !== conocido && JSON.stringify(nuevo) !== local){
+          // La toqué yo Y cambió en otra computadora: combinar campo a campo
+          const fz = fusionarCama(lastKnownServerBeds[id], beds[id], nuevo);
+          if(fz.conflictos.length){
+            conflictos.push({id, nombre:(beds[id].patient&&beds[id].patient.nombre)||(nuevo.patient&&nuevo.patient.nombre)||'', campos:fz.conflictos, conMios:fz.conMios, conNuevo:fz.conNuevo});
+          } else {
+            beds[id] = fz.conMios; combinadas.push(id);
+          }
         }
       });
+      if(conflictos.length){
+        const eleccion = await preguntarConflictoGuardado(conflictos);
+        conflictos.forEach(c=>{ beds[c.id] = eleccion==='mios' ? c.conMios : c.conNuevo; });
+        avisoBreve(eleccion==='mios' ? 'Se guardó tu versión.' : 'Se descartaron tus cambios superpuestos y quedó la versión de la otra computadora.');
+      }
+      if(combinadas.length) avisoBreve('Se combinaron tus cambios con los de otra computadora en la cama '+combinadas.join(', ')+'.');
+      if(conflictos.length || combinadas.length) renderAll();
     } else if(fresco.beds){
       console.error('saveState: la lectura de refresco vino sospechosamente vacía, se ignora y se sigue con lo que había en memoria.');
     }
@@ -5460,8 +5563,9 @@ async function refrescarDesdeServidor(soloCama){
   if(refrescoEnCurso || guardadoEnCurso>0 || hayCambiosPendientesSinMandar()) return false;
   refrescoEnCurso = true;
   try{
-    const res = await fetch(APPS_SCRIPT_URL + '?_=' + Date.now() + '&token=' + encodeURIComponent(googleIdToken||'') + '&liviano=1', {cache:'no-store'});
+    const res = await fetch(APPS_SCRIPT_URL + '?_=' + Date.now() + '&token=' + encodeURIComponent(googleIdToken||'') + '&liviano=1' + paramsSesion(), {cache:'no-store'});
     const fresco = await res.json();
+    actualizarAvisoOtrasSesiones(fresco.otrasSesiones);
     if(!fresco.beds || Object.keys(fresco.beds).length < allIds.length/2) return false; // respuesta rota: no tocar nada
     ultimaSincOk = new Date(); setSincChip('ok');
     if(guardadoEnCurso>0 || hayCambiosPendientesSinMandar()) return false; // pasó algo mientras esperábamos
