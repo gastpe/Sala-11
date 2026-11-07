@@ -5203,11 +5203,11 @@ let pendingMergeUTI = null; // {dni, cama, egreso} de un "Pase a UTI" a fusionar
 let lastKnownServerNotas = null; // ídem para notas
 let lastKnownServerEventos = null; // ídem para eventos
 /* ---------- Uso simultáneo desde otras computadoras ---------- */
-const SESION_ID = (()=>{ try{ let v = sessionStorage.getItem('sala11_sid'); if(!v){ v = Math.random().toString(36).slice(2,10)+Date.now().toString(36); sessionStorage.setItem('sala11_sid', v);} return v; }catch(e){ return Math.random().toString(36).slice(2,12); } })();
+const SESION_ID = (()=>{ try{ let v = sessionStorage.getItem('sala11_sid'); if(!v){ v = Math.random().toString(36).slice(2,8); sessionStorage.setItem('sala11_sid', v);} return v; }catch(e){ return Math.random().toString(36).slice(2,8); } })();
 function paramsSesion(){
-  let nom = '';
-  try{ const pl = JSON.parse(decodeURIComponent(escape(atob((googleIdToken||'').split('.')[1].replace(/-/g,'+').replace(/_/g,'/'))))); nom = pl.name || pl.email || ''; }catch(e){}
-  return '&sid=' + encodeURIComponent(SESION_ID) + '&nom=' + encodeURIComponent(nom);
+  // Ojo: la URL de Apps Script tiene un tope de largo (~2 KB) y el token de Google ya ocupa casi todo.
+  // Por eso solo se manda un id corto; el nombre lo toma el servidor del correo de la sesión.
+  return '&sid=' + encodeURIComponent(String(SESION_ID).slice(0,6));
 }
 function actualizarAvisoOtrasSesiones(lista){
   const b = document.getElementById('otraPcBanner'); if(!b) return;
@@ -5346,7 +5346,7 @@ async function loadState(){
   }
 
   try{
-    const res = await fetch(APPS_SCRIPT_URL + '?_=' + Date.now() + '&token=' + encodeURIComponent(googleIdToken||'') + paramsSesion(), {cache:'no-store'});
+    const res = await fetch(APPS_SCRIPT_URL + '?token=' + encodeURIComponent(googleIdToken||'') + paramsSesion(), {cache:'no-store'});
     const txtResp = await res.text();
     let data;
     try{ data = JSON.parse(txtResp); }
@@ -5431,7 +5431,7 @@ async function saveStateInterno(undoEgreso, completarClinico, mergeUTI){
   // la conseguimos recién ahora — así el guardado real no se pierde.
   if(!lastKnownServerBeds){
     try{
-      const res0 = await fetch(APPS_SCRIPT_URL + '?_=' + Date.now() + '&token=' + encodeURIComponent(googleIdToken||'') + '&liviano=1', {cache:'no-store'});
+      const res0 = await fetch(APPS_SCRIPT_URL + '?token=' + encodeURIComponent(googleIdToken||'') + '&liviano=1', {cache:'no-store'});
       const data0 = await res0.json();
       const data0_confiable = data0.beds && Object.keys(data0.beds).length >= allIds.length / 2;
       // Ojo: si en pantalla hay una copia local vieja (todavía no se leyó la planilla), la base de
@@ -5459,7 +5459,7 @@ async function saveStateInterno(undoEgreso, completarClinico, mergeUTI){
   // en memoria (que puede estar vieja si esta pestaña quedó abierta mucho tiempo). Las camas
   // que sí cambiamos localmente se respetan tal cual, para que el guardado se aplique.
   try{
-    const resFresco = await fetch(APPS_SCRIPT_URL + '?_=' + Date.now() + '&token=' + encodeURIComponent(googleIdToken||'') + '&liviano=1' + paramsSesion(), {cache:'no-store'});
+    const resFresco = await fetch(APPS_SCRIPT_URL + '?token=' + encodeURIComponent(googleIdToken||'') + '&liviano=1' + paramsSesion(), {cache:'no-store'});
     const fresco = await resFresco.json();
     actualizarAvisoOtrasSesiones(fresco.otrasSesiones);
     // SALVAGUARDA: si la respuesta fresca viene sospechosamente vacía (menos de la mitad de las
@@ -5571,7 +5571,7 @@ async function refrescarDesdeServidor(soloCama){
   if(refrescoEnCurso || guardadoEnCurso>0 || hayCambiosPendientesSinMandar()) return false;
   refrescoEnCurso = true;
   try{
-    const res = await fetch(APPS_SCRIPT_URL + '?_=' + Date.now() + '&token=' + encodeURIComponent(googleIdToken||'') + '&liviano=1' + paramsSesion(), {cache:'no-store'});
+    const res = await fetch(APPS_SCRIPT_URL + '?token=' + encodeURIComponent(googleIdToken||'') + '&liviano=1' + paramsSesion(), {cache:'no-store'});
     const fresco = await res.json();
     actualizarAvisoOtrasSesiones(fresco.otrasSesiones);
     if(!fresco.beds || Object.keys(fresco.beds).length < allIds.length/2) return false; // respuesta rota: no tocar nada
