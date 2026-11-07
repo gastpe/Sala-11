@@ -347,6 +347,7 @@
     <div id="sincVeloIcono" style="font-size:34px; line-height:1.2;">⏳</div>
     <div id="sincVeloTitulo" style="font-weight:800; font-size:18px; margin-top:6px;"></div>
     <div id="sincVeloTexto" style="font-size:14px; color:#52514e; margin-top:6px; line-height:1.4;"></div>
+ <div id="sincVeloDetalle" style="display:none; font-size:11.5px; color:#8a1f11; margin-top:10px; word-break:break-word; text-align:left; background:#FBE8E6; border-radius:6px; padding:6px 8px;"></div>
     <div id="sincVeloBtns" style="display:none; gap:8px; margin-top:16px; justify-content:center; flex-wrap:wrap;">
       <button type="button" class="btn" onclick="sincReintentar()">Reintentar</button>
       <button type="button" class="btn ghost" id="btnCopiaLocal" onclick="sincUsarCopiaLocal()">Trabajar con la copia local</button>
@@ -3536,7 +3537,8 @@ setInterval(()=>{
   if(autoReloadedThisIdle) return; // ya se recargó una vez en este período de inactividad, no insistir
   const inactivo = Date.now() - lastActivityTime >= AUTO_RELOAD_MS;
   const hayModalAbierto = !!document.querySelector('.overlay.show');
-  if(inactivo && !hayModalAbierto && guardadoEnCurso===0){
+  const veloVisible = (document.getElementById('sincVelo')||{style:{}}).style.display === 'flex';
+  if(inactivo && !hayModalAbierto && !veloVisible && !modoCopiaLocal && guardadoEnCurso===0){
     autoReloadedThisIdle = true;
     try{ sessionStorage.setItem('sala11_auto_reloaded', '1'); }catch(e){}
     location.reload();
@@ -5291,7 +5293,7 @@ function setSincChip(estado){
     el.textContent = '⚠ Sin actualizar' + (ultimaSincOk ? ' (última: '+ultimaSincOk.toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'})+')' : ''); el.style.color = '#C0392B';
   } else { el.textContent = '⏳ Sincronizando…'; el.style.color = ''; }
 }
-function mostrarVeloSinc(modo){
+function mostrarVeloSinc(modo, detalle){
   const v = document.getElementById('sincVelo'); if(!v) return;
   const hayCopia = !!(loadLocalCache() && loadLocalCache().data);
   const t = {
@@ -5303,6 +5305,8 @@ function mostrarVeloSinc(modo){
   document.getElementById('sincVeloTitulo').textContent = t.t;
   document.getElementById('sincVeloTexto').textContent = t.x;
   document.getElementById('sincVeloBtns').style.display = t.b ? 'flex' : 'none';
+  const det = document.getElementById('sincVeloDetalle');
+  if(det){ det.textContent = detalle ? 'Detalle técnico: ' + detalle : ''; det.style.display = detalle ? 'block' : 'none'; }
   document.getElementById('btnCopiaLocal').style.display = hayCopia ? '' : 'none';
   v.style.display = 'flex';
 }
@@ -5311,8 +5315,9 @@ function ocultarVeloSinc(){
   const v = document.getElementById('sincVelo'); if(v) v.style.display = 'none';
 }
 function marcarSincronizado(){ ultimaSincOk = new Date(); setSincChip('ok'); ocultarVeloSinc(); }
-function sincReintentar(){ loadState(); }
-function sincUsarCopiaLocal(){ ocultarVeloSinc(); setSincChip('sin'); }
+function sincReintentar(){ modoCopiaLocal = false; loadState(); }
+let modoCopiaLocal = false;
+function sincUsarCopiaLocal(){ modoCopiaLocal = true; ocultarVeloSinc(); setSincChip('sin'); }
 
 async function loadState(){
   if(!backendConfigured()) return;
@@ -5342,7 +5347,10 @@ async function loadState(){
 
   try{
     const res = await fetch(APPS_SCRIPT_URL + '?_=' + Date.now() + '&token=' + encodeURIComponent(googleIdToken||'') + paramsSesion(), {cache:'no-store'});
-    const data = await res.json();
+    const txtResp = await res.text();
+    let data;
+    try{ data = JSON.parse(txtResp); }
+    catch(_){ throw new Error('El servidor no devolvió datos válidos (HTTP '+res.status+'): '+txtResp.replace(/<[^>]*>/g,' ').replace(/\s+/g,' ').trim().slice(0,160)); }
     actualizarAvisoOtrasSesiones(data.otrasSesiones);
     // SALVAGUARDA: si la planilla devolvió una foto sospechosamente vacía (por un hipo pasajero
     // de Google/la red), NO la tomamos como válida — mantenemos lo que ya teníamos (de la copia
@@ -5400,7 +5408,7 @@ async function loadState(){
     console.error('No se pudo cargar desde Google Sheets', e);
     clearTimeout(sincTimer);
     setSincChip('sin');
-    mostrarVeloSinc('error');
+    mostrarVeloSinc('error', String((e && e.message) || e));
     if(cache && cache.data){
       setOfflineBanner(true, cache.savedAt, false);
     }
