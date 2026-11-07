@@ -5616,16 +5616,18 @@ async function abrirCama(id){
   document.body.style.cursor = '';
   openBed(id);
 }
+let ultimoRefrescoAuto = 0;
 function iniciarRefrescoAutomatico(){
-  setInterval(()=>{
+  // Poca carga sobre el servidor: cada 3 minutos, solo con la pestaña a la vista y sin modales abiertos.
+  const intentar = ()=>{
     if(document.visibilityState!=='visible') return;
-    if(document.querySelector('.overlay.show')) return; // no molestar mientras se edita algo
+    if(document.querySelector('.overlay.show')) return;
+    if(Date.now() - ultimoRefrescoAuto < 150000) return; // nunca más seguido que cada 2,5 min
+    ultimoRefrescoAuto = Date.now();
     refrescarDesdeServidor();
-  }, 45000);
-  document.addEventListener('visibilitychange', ()=>{
-    if(document.visibilityState==='visible' && !document.querySelector('.overlay.show')) setTimeout(()=>refrescarDesdeServidor(), 800);
-  });
-  window.addEventListener('focus', ()=>{ if(!document.querySelector('.overlay.show')) setTimeout(()=>refrescarDesdeServidor(), 800); });
+  };
+  setInterval(intentar, 180000);
+  document.addEventListener('visibilitychange', ()=>{ if(document.visibilityState==='visible') setTimeout(intentar, 1500); });
 }
 
 /* ---------- Login con Google ---------- */
